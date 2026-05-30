@@ -1,0 +1,101 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+// ========================================
+// Configuración del Proyecto
+// ========================================
+
+group = 'cr.ac.tec.spaceinvaders'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+// ========================================
+// Dependencias
+// ========================================
+
+dependencies {
+    // Serialización JSON (usada por JsonUtil)
+    implementation 'com.google.code.gson:gson:2.11.0'
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// ========================================
+// Configuración de Java
+// ========================================
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+    options.compilerArgs += [
+        '-Xlint:unchecked',
+        '-Xlint:deprecation'
+    ]
+}
+
+// ========================================
+// Configuración de Application
+// ========================================
+
+application {
+    mainClass = 'cr.ac.tec.spaceinvaders.server.Main'
+    applicationDefaultJvmArgs = [
+        '-Xms256m',
+        '-Xmx1024m'
+    ]
+}
+
+// ========================================
+// JAR ejecutable con dependencias (fat jar)
+// Genera: build/libs/spaceinvaders-server-1.0.0.jar
+// Ejecutar: java -jar build/libs/spaceinvaders-server-1.0.0.jar
+// ========================================
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'cr.ac.tec.spaceinvaders.server.Main'
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// ========================================
+// Testing
+// ========================================
+
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+}
+
+tasks.named('run') {
+    standardInput = System.in
+}
+
+// ========================================
+// Task de prueba de Fase 1.5 (motor sin red)
+// ========================================
+
+tasks.register('runPrueba', JavaExec) {
+    group = 'application'
+    description = 'Ejecuta la prueba de consola del motor (Fase 1.5).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'cr.ac.tec.spaceinvaders.server.cli.PruebaConsola'
+}

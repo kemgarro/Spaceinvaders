@@ -1,0 +1,46 @@
+# Java
+*.class
+*.jar
+target/
+build/
+.gradle/
+gradle-app.setting
+*.iml
+.idea/
+.vscode/
+
+# C
+*.o
+*.obj
+*.exe
+client
+spectator
+client-c/build/
+
+# Pico
+pico-controller/build/
+*.uf2
+*.elf
+
+# Logs
+*.log
+client.log
+server.log
+
+# OS
+.DS_Store
+Thumbs.db
+*~
+*.tmp
+
+# Salidas y empaquetados
+builds/
+dist/
+*.zip
+!planificacion/analisis-codigo-base/**/*.zip
+
+# IDE
+.classpath
+.project
+.settings/
+nbproject/
