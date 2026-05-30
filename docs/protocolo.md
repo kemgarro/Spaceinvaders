@@ -34,7 +34,7 @@ Se eligió JSON line-delimited en lugar de un formato pipe-separated por las sig
 - **Librerías estándar maduras en ambos lados.** Gson en Java y cJSON en C son dependencias únicas, ampliamente probadas; evitamos escribir y depurar un parser propio.
 - **Costo aceptado.** JSON usa aproximadamente 3× más bytes que pipe-separated y su parsing es más caro en CPU. En una LAN, a 20 TPS y con un orden de magnitud de ~100 entidades activas, el costo es despreciable frente al beneficio de mantenibilidad.
 
-> **Nota sobre documentos obsoletos.** Los archivos `fases-detalladas-spaceinvaders.md` y `.claude/skills/network-protocol/SKILL.md` describen versiones anteriores del protocolo en formato pipe-separated (`STATE|...|...`). Esas versiones **quedan desactualizadas** a partir de este documento y deben tratarse como referencia histórica. La fuente de verdad del protocolo es este archivo.
+> **Nota sobre documentos obsoletos.** Cualquier documento interno previo del equipo que describa el protocolo en formato pipe-separated (`STATE|...|...`) queda **desactualizado** a partir de este archivo y debe tratarse como referencia histórica. La fuente de verdad del protocolo es este documento.
 
 ---
 

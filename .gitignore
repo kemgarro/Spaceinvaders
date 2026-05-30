@@ -44,3 +44,8 @@ dist/
 .project
 .settings/
 nbproject/
+
+# Config y planificacion local (no se entrega)
+.claude/
+CLAUDE.md
+planificacion/
