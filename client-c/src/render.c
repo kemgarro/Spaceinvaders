@@ -31,17 +31,23 @@ static Color render_color_alien(TipoVista tipo) {
     }
 }
 
+/* Busca un jugador por id en el estado; retorna NULL si no esta. */
+static const JugadorVista *render_buscar_jugador(const EstadoVista *estado, const char *id) {
+    if (estado == NULL || id == NULL) {
+        return NULL;
+    }
+    for (int i = 0; i < estado->n_jugadores; i++) {
+        if (strncmp(estado->jugadores[i].id, id, ID_MAX) == 0) {
+            return &estado->jugadores[i];
+        }
+    }
+    return NULL;
+}
+
 /* Dibuja el HUD superior con puntaje/vidas/oleada del jugador local. */
 static void render_dibujar_hud(const EstadoVista *estado, const char *id_jugador_local) {
     char texto[128];
-    const JugadorVista *yo = NULL;
-
-    for (int i = 0; i < estado->n_jugadores; i++) {
-        if (strncmp(estado->jugadores[i].id, id_jugador_local, ID_MAX) == 0) {
-            yo = &estado->jugadores[i];
-            break;
-        }
-    }
+    const JugadorVista *yo = render_buscar_jugador(estado, id_jugador_local);
 
     if (yo != NULL) {
         snprintf(texto, sizeof(texto), "Puntaje: %d  Vidas: %d  Oleada: %d",
@@ -51,6 +57,62 @@ static void render_dibujar_hud(const EstadoVista *estado, const char *id_jugador
     }
 
     DrawText(texto, RENDER_HUD_MARGEN, RENDER_HUD_MARGEN, RENDER_HUD_FONT_SIZE, RAYWHITE);
+}
+
+/* Dibuja el HUD del espectador (encabezado y stats del jugador observado). */
+static void render_dibujar_hud_espectador(const EstadoVista *estado, const char *target) {
+    char texto[160];
+    if (target == NULL || target[0] == '\0') {
+        snprintf(texto, sizeof(texto), "MODO ESPECTADOR (sin target)");
+        DrawText(texto, RENDER_HUD_MARGEN, RENDER_HUD_MARGEN, RENDER_HUD_FONT_SIZE, RED);
+        return;
+    }
+    const JugadorVista *obs = render_buscar_jugador(estado, target);
+    if (obs == NULL) {
+        snprintf(texto, sizeof(texto), "JUGADOR %s DESCONECTADO", target);
+        DrawText(texto, RENDER_HUD_MARGEN, RENDER_HUD_MARGEN, RENDER_HUD_FONT_SIZE, RED);
+        return;
+    }
+    snprintf(texto, sizeof(texto), "OBSERVANDO A %s", target);
+    DrawText(texto, RENDER_HUD_MARGEN, RENDER_HUD_MARGEN, RENDER_HUD_FONT_SIZE, LIME);
+    char stats[128];
+    snprintf(stats, sizeof(stats), "Puntaje: %d  Vidas: %d  Oleada: %d",
+             obs->puntaje, obs->vidas, estado->oleada);
+    DrawText(stats,
+             RENDER_HUD_MARGEN,
+             RENDER_HUD_MARGEN + RENDER_HUD_FONT_SIZE + 4,
+             RENDER_HUD_FONT_SIZE,
+             RAYWHITE);
+}
+
+/* Dibuja una columna a la derecha con todos los jugadores conectados. El
+ * parametro id_destacado marca con un puntero al jugador local (modo PLAYER)
+ * o al jugador observado (modo SPECTATOR). */
+static void render_dibujar_sidebar(const EstadoVista *estado, const char *id_destacado) {
+    if (estado == NULL || estado->n_jugadores == 0) {
+        return;
+    }
+    int x = VENTANA_ANCHO - RENDER_SIDEBAR_ANCHO - RENDER_SIDEBAR_MARGEN_DER;
+    int y = RENDER_SIDEBAR_TITULO_Y;
+
+    DrawText("JUGADORES", x, y, RENDER_SIDEBAR_FONT_SIZE, RAYWHITE);
+    DrawText("-----------", x, y + RENDER_SIDEBAR_INTERLINEA,
+             RENDER_SIDEBAR_FONT_SIZE, GRAY);
+
+    int fila_y = y + (RENDER_SIDEBAR_INTERLINEA * 2);
+    char texto[64];
+    for (int i = 0; i < estado->n_jugadores; i++) {
+        const JugadorVista *j = &estado->jugadores[i];
+        bool destacado = (id_destacado != NULL &&
+                          strncmp(j->id, id_destacado, ID_MAX) == 0);
+        const char *marcador = destacado ? "> " : "  ";
+        /* Formato: marcador + id (5 cols) + puntaje (4) + V vidas */
+        snprintf(texto, sizeof(texto), "%s%-5s %4d  V%d",
+                 marcador, j->id, j->puntaje, j->vidas);
+        Color color = destacado ? LIME : RAYWHITE;
+        DrawText(texto, x, fila_y, RENDER_SIDEBAR_FONT_SIZE, color);
+        fila_y += RENDER_SIDEBAR_INTERLINEA;
+    }
 }
 
 /* Dibuja el ultimo evento recibido en la esquina inferior derecha. */
@@ -100,11 +162,13 @@ static void render_dibujar_bunker(const EntidadVista *bunker) {
     DrawRectangle(bunker->x, bunker->y, RENDER_ANCHO_BUNKER, RENDER_ALTO_BUNKER, color);
 }
 
-/* Dibuja un canon. El que pertenece al jugador local va en verde brillante. */
-static void render_dibujar_canon(const EntidadVista *canon, const char *id_jugador_local) {
+/* Dibuja un canon. El canon "destacado" (jugador local o target observado) va
+ * en verde brillante; el resto en celeste. */
+static void render_dibujar_canon(const EntidadVista *canon, const char *id_destacado) {
     /* El servidor guarda el id del jugador dueno del canon en la etiqueta. */
-    bool es_local = (strncmp(canon->etiqueta, id_jugador_local, ID_MAX) == 0);
-    Color color = es_local ? LIME : SKYBLUE;
+    bool es_destacado = (id_destacado != NULL &&
+                         strncmp(canon->etiqueta, id_destacado, ID_MAX) == 0);
+    Color color = es_destacado ? LIME : SKYBLUE;
     DrawRectangle(canon->x, canon->y, RENDER_ANCHO_CANNON, RENDER_ALTO_CANNON, color);
 }
 
@@ -127,7 +191,13 @@ void render_inicializar(void) {
     SetTargetFPS(FPS);
 }
 
-void render_dibujar(const EstadoVista *estado, const char *id_jugador_local) {
+void render_dibujar(const EstadoVista *estado,
+                    const char *id_jugador_local,
+                    const char *target_observado,
+                    int soy_espectador) {
+    /* Id que se "resalta" en el render (canon verde + marcador en sidebar). */
+    const char *id_destacado = soy_espectador ? target_observado : id_jugador_local;
+
     BeginDrawing();
     ClearBackground(BLACK);
 
@@ -148,7 +218,7 @@ void render_dibujar(const EstadoVista *estado, const char *id_jugador_local) {
 
     /* Canones. */
     for (int i = 0; i < estado->n_canones; i++) {
-        render_dibujar_canon(&estado->canones[i], id_jugador_local);
+        render_dibujar_canon(&estado->canones[i], id_destacado);
     }
 
     /* Balas. */
@@ -157,7 +227,12 @@ void render_dibujar(const EstadoVista *estado, const char *id_jugador_local) {
     }
 
     /* HUD encima de todo. */
-    render_dibujar_hud(estado, id_jugador_local);
+    if (soy_espectador) {
+        render_dibujar_hud_espectador(estado, target_observado);
+    } else {
+        render_dibujar_hud(estado, id_jugador_local);
+    }
+    render_dibujar_sidebar(estado, id_destacado);
     render_dibujar_ultimo_evento(estado);
 
     if (estado->juego_terminado) {

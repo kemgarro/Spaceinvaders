@@ -4,15 +4,16 @@
  * Entry point del cliente C (jugador o espectador).
  *
  * Responsabilidades:
- *  - Parseo simple de argumentos (--host, --port, --id, --spectator).
+ *  - Parseo simple de argumentos (--host, --port, --id, --spectator, --watch).
  *  - Conexion TCP al servidor via la capa network.
- *  - Handshake CONNECT.
+ *  - Handshake CONNECT (incluye target cuando es espectador).
  *  - Game loop: drena STATE/EVENT del servidor, lee input local, envia INPUT,
- *    invoca render. Se mantiene activo hasta que el usuario pide salir o se
- *    pierde la conexion.
+ *    invoca render. Se mantiene activo hasta que el usuario pide salir, se
+ *    pierde la conexion, o llega una senial SIGINT/SIGTERM.
  *  - Despedida DISCONNECT y cierre limpio de la ventana.
  */
 
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,10 +28,19 @@
 #define MAIN_ID_DEFAULT     "p1"
 #define MAIN_BUF_MENSAJE    256
 
+/* Bandera global para senializar SIGINT/SIGTERM al loop principal. */
+static volatile sig_atomic_t solicitud_salir = 0;
+
+/* Handler de senial: solo marca la bandera (operacion async-signal-safe). */
+static void manejador_senales(int sig) {
+    (void)sig;
+    solicitud_salir = 1;
+}
+
 /* Imprime ayuda en stderr cuando los argumentos no son validos. */
 static void main_imprimir_uso(const char *prog) {
     fprintf(stderr,
-            "uso: %s [--host IP] [--port N] [--id ID] [--spectator]\n",
+            "uso: %s [--host IP] [--port N] [--id ID] [--spectator] [--watch ID]\n",
             prog);
 }
 
@@ -40,6 +50,7 @@ int main(int argc, char *argv[]) {
     int puerto = SERVIDOR_PUERTO;
     const char *id = MAIN_ID_DEFAULT;
     bool spectator = false;
+    const char *target_watch = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
@@ -50,6 +61,8 @@ int main(int argc, char *argv[]) {
             id = argv[++i];
         } else if (strcmp(argv[i], "--spectator") == 0) {
             spectator = true;
+        } else if (strcmp(argv[i], "--watch") == 0 && i + 1 < argc) {
+            target_watch = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             main_imprimir_uso(argv[0]);
             return 0;
@@ -59,6 +72,29 @@ int main(int argc, char *argv[]) {
             return 1;
         }
     }
+
+    /* --- validacion de flags --- */
+    /* El espectador SIEMPRE necesita target; si no se pasa, salimos antes de
+     * abrir el socket para evitar gastar slots en el servidor. */
+    if (spectator && (target_watch == NULL || target_watch[0] == '\0')) {
+        fprintf(stderr, "modo espectador requiere --watch <id>\n");
+        return 2;
+    }
+    /* En modo jugador --watch no tiene sentido: lo ignoramos pero avisamos. */
+    if (!spectator && target_watch != NULL) {
+        fprintf(stderr, "aviso: --watch se ignora en modo jugador\n");
+        target_watch = NULL;
+    }
+
+    /* --- instalacion del handler de seniales --- */
+    /* Lo dejamos antes de abrir el socket para que cualquier Ctrl+C durante
+     * el handshake termine ordenado y no como SIGINT default. */
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = manejador_senales;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
 
     /* --- conexion al servidor --- */
     Conexion con;
@@ -70,9 +106,12 @@ int main(int argc, char *argv[]) {
 
     const char *tipo_cliente = spectator ? TIPO_SPECTATOR : TIPO_PLAYER;
     printf("cliente conectado como %s (%s)\n", id, tipo_cliente);
+    if (spectator) {
+        printf("observando a %s\n", target_watch);
+    }
 
     char buf[MAIN_BUF_MENSAJE];
-    int n = protocolo_construir_connect(buf, sizeof(buf), id, tipo_cliente);
+    int n = protocolo_construir_connect(buf, sizeof(buf), id, tipo_cliente, target_watch);
     if (n <= 0 || !red_enviar(&con, buf, n)) {
         fprintf(stderr, "fallo al enviar CONNECT\n");
         red_cerrar(&con);
@@ -88,7 +127,7 @@ int main(int argc, char *argv[]) {
     char linea[BUFFER_RED];
 
     /* --- loop principal --- */
-    while (!input_quiere_salir() && con.conectado) {
+    while (!input_quiere_salir() && con.conectado && !solicitud_salir) {
         /* drenamos todas las lineas pendientes del servidor */
         while (red_recibir_linea(&con, linea, sizeof(linea))) {
             if (protocolo_aplicar_mensaje(&estado, linea)) {
@@ -112,10 +151,15 @@ int main(int argc, char *argv[]) {
 
         /* render */
         if (primer_estado) {
-            render_dibujar(&estado, id);
+            render_dibujar(&estado, id, target_watch, spectator ? 1 : 0);
         } else {
             render_dibujar_esperando(host, puerto);
         }
+    }
+
+    /* Si salimos por senial, dejar rastro en stderr antes del cleanup. */
+    if (solicitud_salir) {
+        fprintf(stderr, "senial recibida, cerrando...\n");
     }
 
     /* --- despedida --- */

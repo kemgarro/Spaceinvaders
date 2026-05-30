@@ -93,9 +93,14 @@ bool protocolo_aplicar_mensaje(EstadoVista *estado, const char *json);
  * Construye una linea JSON CONNECT lista para enviar (incluye \n al final).
  * jugador_id: id que se usara para identificar al cliente.
  * tipo_cliente: TIPO_PLAYER o TIPO_SPECTATOR.
+ * target: id del jugador a observar (obligatorio para SPECTATOR). Si es NULL o
+ *         cadena vacia, no se incluye el campo en el JSON (caso PLAYER).
  * Retorna la cantidad de bytes escritos en out, o -1 si overflow.
  */
-int protocolo_construir_connect(char *out, int max, const char *jugador_id, const char *tipo_cliente);
+int protocolo_construir_connect(char *out, int max,
+                                const char *jugador_id,
+                                const char *tipo_cliente,
+                                const char *target);
 
 /**
  * Construye una linea JSON INPUT lista para enviar (incluye \n al final).

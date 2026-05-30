@@ -21,6 +21,7 @@ public class Mensaje {
     private String action;
     private String name;
     private String clientType;  // "PLAYER" o "SPECTATOR"
+    private String target;      // id del jugador observado (solo en CONNECT de SPECTATOR)
     private Object payload;
     private Map<String, Object> data;
     
@@ -111,6 +112,27 @@ public class Mensaje {
 
     public void setClientType(String clientType) {
         this.clientType = clientType;
+    }
+
+    /**
+     * Devuelve el id del jugador observado por el espectador.
+     *
+     * <p>Solo aplica a mensajes {@code CONNECT} con {@code clientType = "SPECTATOR"}.
+     * Para otros tipos de mensaje este campo es {@code null}.</p>
+     *
+     * @return id del jugador objetivo o {@code null} si no aplica.
+     */
+    public String getTarget() {
+        return target;
+    }
+
+    /**
+     * Fija el id del jugador objetivo del espectador.
+     *
+     * @param target id del jugador a observar.
+     */
+    public void setTarget(String target) {
+        this.target = target;
     }
 }
 

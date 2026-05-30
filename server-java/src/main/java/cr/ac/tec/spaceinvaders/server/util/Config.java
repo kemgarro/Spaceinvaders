@@ -156,7 +156,7 @@ public class Config {
     // ============================================================
 
     /** Velocidad de bala del cañón en píxeles por tick. */
-    public static final double BALA_CANNON_VELOCIDAD = 8.0;
+    public static final double BALA_CANNON_VELOCIDAD = 16.0;
 
     /** Velocidad de bala de alien en píxeles por tick. */
     public static final double BALA_ALIEN_VELOCIDAD = 4.0;

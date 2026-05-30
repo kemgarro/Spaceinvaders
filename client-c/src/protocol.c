@@ -423,13 +423,24 @@ bool protocolo_aplicar_mensaje(EstadoVista *estado, const char *json) {
  * Construccion de mensajes salientes
  * =================================================================== */
 
-int protocolo_construir_connect(char *out, int max, const char *jugador_id, const char *tipo_cliente) {
+int protocolo_construir_connect(char *out, int max,
+                                const char *jugador_id,
+                                const char *tipo_cliente,
+                                const char *target) {
     if (out == NULL || max <= 0 || jugador_id == NULL || tipo_cliente == NULL) {
         return -1;
     }
-    int n = snprintf(out, (size_t)max,
+    int n;
+    /* Si target esta presente (no NULL y no vacio) se agrega al JSON. */
+    if (target != NULL && target[0] != '\0') {
+        n = snprintf(out, (size_t)max,
+                     "{\"type\":\"CONNECT\",\"id\":\"%s\",\"clientType\":\"%s\",\"target\":\"%s\"}\n",
+                     jugador_id, tipo_cliente, target);
+    } else {
+        n = snprintf(out, (size_t)max,
                      "{\"type\":\"CONNECT\",\"id\":\"%s\",\"clientType\":\"%s\"}\n",
                      jugador_id, tipo_cliente);
+    }
     if (n < 0 || n >= max) {
         return -1;
     }

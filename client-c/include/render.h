@@ -39,11 +39,28 @@
 #define RENDER_EVENTO_FONT_SIZE    16
 #define RENDER_HUD_MARGEN          10
 
+/* ===== Sidebar de jugadores ===== */
+#define RENDER_SIDEBAR_ANCHO       180
+#define RENDER_SIDEBAR_MARGEN_DER  20
+#define RENDER_SIDEBAR_Y_INICIO    80
+#define RENDER_SIDEBAR_FONT_SIZE   16
+#define RENDER_SIDEBAR_INTERLINEA  22
+#define RENDER_SIDEBAR_TITULO_Y    80
+
 /** Inicializa la ventana de raylib. Llamar una vez al arranque. */
 void render_inicializar(void);
 
-/** Dibuja un frame completo a partir del estado actual. Llamar dentro del loop. */
-void render_dibujar(const EstadoVista *estado, const char *id_jugador_local);
+/**
+ * Dibuja un frame completo a partir del estado actual. Llamar dentro del loop.
+ * soy_espectador: 0 = cliente jugador, 1 = cliente espectador.
+ * id_jugador_local: id del jugador local (solo se usa cuando soy_espectador == 0).
+ * target_observado: id del jugador observado (solo se usa cuando soy_espectador == 1).
+ *                   Puede ser NULL en modo jugador.
+ */
+void render_dibujar(const EstadoVista *estado,
+                    const char *id_jugador_local,
+                    const char *target_observado,
+                    int soy_espectador);
 
 /** Dibuja una pantalla de "conectando..." mientras no hay estado aun. */
 void render_dibujar_esperando(const char *host, int puerto);

@@ -53,6 +53,15 @@ public class EstadoJuego {
     /** Identificadores de espectadores conectados. */
     public final Set<String> espectadores = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Relacion espectador -> jugador observado.
+     *
+     * <p>La clave es el id del espectador y el valor es el id del jugador al
+     * que esta asociado. Cada espectador observa a un unico jugador (RF-CE03
+     * del enunciado: "cada jugador tiene su propio espectador asociado").</p>
+     */
+    public final Map<String, String> espectadoresPorJugador = new ConcurrentHashMap<>();
+
     /** OVNI activo, o {@code null} si no hay ninguno cruzando la pantalla. */
     public Ovni ovni;
 
@@ -155,6 +164,11 @@ public class EstadoJuego {
             jugadoresJson.add(m);
         }
         mapa.put("jugadores", jugadoresJson);
+
+        // Mapeo espectador -> jugador observado.
+        // Se serializa como LinkedHashMap para que el orden de las claves sea
+        // estable en el JSON resultante (util para diagnostico).
+        mapa.put("espectadoresPorJugador", new LinkedHashMap<>(espectadoresPorJugador));
 
         return mapa;
     }

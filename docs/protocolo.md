@@ -49,6 +49,7 @@ Todos los mensajes comparten la misma estructura raíz, definida en `Mensaje.jav
 | `action`     | string             | Acción enviada por el jugador en mensajes `INPUT`.                                       |
 | `name`       | string             | Nombre del evento en mensajes `EVENT` (corresponde a `TipoEvento`).                      |
 | `clientType` | string             | `PLAYER` o `SPECTATOR`. Solo se usa en `CONNECT`. Si falta, se asume `PLAYER`.           |
+| `target`     | string             | Id del jugador observado. Obligatorio en `CONNECT` cuando `clientType = "SPECTATOR"`.    |
 | `payload`    | objeto / valor     | Datos específicos del evento o del error.                                                |
 | `data`       | objeto             | Cuerpo del `STATE` (snapshot del juego).                                                 |
 
@@ -65,7 +66,7 @@ Flujo de vida de una conexión:
 3. El cliente envía un mensaje `CONNECT` con `id` y `clientType`.
 4. El servidor valida:
    - Si `clientType == "PLAYER"`: intenta registrar al jugador. Si no cabe, responde `ERROR` y cierra.
-   - Si `clientType == "SPECTATOR"`: verifica que haya al menos un jugador activo. Si no, responde `ERROR` y cierra.
+   - Si `clientType == "SPECTATOR"`: verifica que haya al menos un jugador activo **y** que el espectador haya enviado el campo `target` con el id de un jugador existente. Si falta `target` o el jugador objetivo no existe, responde `ERROR` y cierra. No se aceptan espectadores "globales" — RF-CE03 del enunciado exige que cada espectador esté asociado a un jugador concreto.
 5. Si la admisión fue exitosa, el servidor envía un `STATE` inicial al cliente.
 6. A partir de ese momento:
    - El servidor empuja `STATE` (snapshots periódicos) y `EVENT` (cambios puntuales) al cliente.
@@ -89,13 +90,14 @@ Primer mensaje obligatorio tras abrir el socket. Identifica al cliente y declara
 }
 ```
 
-Espectador:
+Espectador (debe declarar a qué jugador va a observar mediante `target`):
 
 ```json
 {
   "type": "CONNECT",
   "id": "espectador-1",
-  "clientType": "SPECTATOR"
+  "clientType": "SPECTATOR",
+  "target": "jugador-1"
 }
 ```
 
@@ -104,6 +106,10 @@ Reglas:
 - Si `id` es nulo o vacío, el servidor responde `ERROR` y desconecta.
 - Si `clientType` falta, se asume `"PLAYER"` por compatibilidad (`ManejadorCliente.manejarConexion`).
 - Valores aceptados de `clientType`: `"PLAYER"`, `"SPECTATOR"` (comparación case-insensitive).
+- Si `clientType == "SPECTATOR"`, el campo `target` es **obligatorio** y debe contener el id de un jugador actualmente registrado:
+  - Si `target` falta o está vacío, el servidor responde `ERROR` con el texto `"Espectador requiere campo target (id del jugador a observar)"` y cierra el socket.
+  - Si `target` apunta a un id que no existe (o se rechaza por cupo lleno), responde `ERROR` con `"No se puede conectar como espectador: jugador target inexistente o cupo lleno: <target>"` y cierra.
+  - El servidor trackea la relación espectador → jugador en `EstadoJuego.espectadoresPorJugador`, expuesta en el snapshot `STATE` bajo la clave `espectadoresPorJugador` para diagnóstico.
 
 ### 5.2 `INPUT`
 
@@ -449,7 +455,7 @@ El servidor cierra el socket, elimina al jugador del `GameManager` y libera el s
 
 | Tipo de mensaje | Dirección       | Campos relevantes                            | Notas                                              |
 |-----------------|------------------|----------------------------------------------|----------------------------------------------------|
-| `CONNECT`       | cliente → servidor | `id`, `clientType`                          | Primer mensaje obligatorio.                        |
+| `CONNECT`       | cliente → servidor | `id`, `clientType`, `target` (solo espectador) | Primer mensaje obligatorio. El espectador debe declarar a quién observa con `target`. |
 | `INPUT`         | cliente → servidor | `id`, `action`                              | Solo jugadores. Acciones: `MOVE_LEFT`, `MOVE_RIGHT`, `FIRE`, `STOP`. |
 | `DISCONNECT`    | cliente → servidor | `id`                                        | Cortés. Cerrar el socket equivale a este mensaje.  |
 | `STATE`         | servidor → cliente | `data` (snapshot completo)                  | Reemplaza estado, no es delta.                     |

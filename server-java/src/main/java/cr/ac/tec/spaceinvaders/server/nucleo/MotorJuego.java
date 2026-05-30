@@ -152,27 +152,71 @@ public class MotorJuego extends Sujeto {
     }
 
     /**
-     * Registra un espectador.
+     * Registra un espectador asociado a un jugador especifico.
      *
-     * @param id id del espectador.
-     * @return true si fue aceptado, false si se alcanzó el límite global.
+     * <p>Cada espectador debe declarar (en su mensaje CONNECT) cual jugador
+     * piensa observar. El motor valida que ese jugador exista antes de
+     * aceptar la conexion, ya que el enunciado (RF-CE03) indica que "cada
+     * jugador tiene su propio espectador asociado" — no se permiten
+     * espectadores "globales" sin objetivo.</p>
+     *
+     * <p>Reglas aplicadas en orden:</p>
+     * <ol>
+     *   <li>Si {@code idJugadorObservado} es {@code null}, se rechaza.</li>
+     *   <li>Si no existe un jugador registrado con ese id, se rechaza.</li>
+     *   <li>Si el cupo global de espectadores esta lleno, se rechaza.</li>
+     *   <li>Si el espectador ya estaba registrado, se trata como caso
+     *       idempotente (retorna {@code true} sin duplicar).</li>
+     *   <li>Caso exito: se agrega al set y se trackea la relacion en
+     *       {@link EstadoJuego#espectadoresPorJugador}.</li>
+     * </ol>
+     *
+     * @param idEspectador       id del espectador que se quiere registrar.
+     * @param idJugadorObservado id del jugador que el espectador desea ver.
+     * @return true si fue aceptado, false en caso contrario.
      */
-    public boolean registrarEspectador(String id) {
+    public boolean registrarEspectador(String idEspectador, String idJugadorObservado) {
         synchronized (lock) {
+            if (idJugadorObservado == null) {
+                LoggerUtil.warning("registrarEspectador rechazado: target nulo (" + idEspectador + ")");
+                return false;
+            }
+            // Validar que el jugador objetivo exista.
+            Jugador objetivo = null;
+            for (Jugador j : estado.jugadores) {
+                if (idJugadorObservado.equals(j.getId())) {
+                    objetivo = j;
+                    break;
+                }
+            }
+            if (objetivo == null) {
+                LoggerUtil.warning("registrarEspectador rechazado: jugador target inexistente ("
+                    + idEspectador + " -> " + idJugadorObservado + ")");
+                return false;
+            }
+            // Validar cupo global.
             int activos = 0;
             for (Jugador j : estado.jugadores) {
                 if (j.estaVivo()) activos++;
             }
             int cupoMax = Math.max(activos, 1) * Config.MAX_ESPECTADORES_POR_JUGADOR;
-            if (estado.espectadores.size() >= cupoMax) {
-                LoggerUtil.warning("registrarEspectador rechazado: cupo lleno (" + id + ")");
+            if (estado.espectadores.size() >= cupoMax
+                && !estado.espectadores.contains(idEspectador)) {
+                LoggerUtil.warning("registrarEspectador rechazado: cupo lleno (" + idEspectador + ")");
                 return false;
             }
-            boolean agregado = estado.espectadores.add(id);
-            if (agregado) {
-                LoggerUtil.info("espectador agregado: " + id);
+            // Idempotencia: si ya estaba registrado, no duplicar.
+            if (estado.espectadores.contains(idEspectador)) {
+                LoggerUtil.info("registrarEspectador idempotente: " + idEspectador
+                    + " ya estaba registrado");
+                // Reafirmamos el mapeo por si cambio el target.
+                estado.espectadoresPorJugador.put(idEspectador, idJugadorObservado);
+                return true;
             }
-            return agregado;
+            estado.espectadores.add(idEspectador);
+            estado.espectadoresPorJugador.put(idEspectador, idJugadorObservado);
+            LoggerUtil.info("espectador " + idEspectador + " observando a " + idJugadorObservado);
+            return true;
         }
     }
 
@@ -204,10 +248,12 @@ public class MotorJuego extends Sujeto {
         }
     }
 
-    /** Quita un espectador del registro. */
+    /** Quita un espectador del registro y libera su mapeo con el jugador observado. */
     public void eliminarEspectador(String id) {
         synchronized (lock) {
-            if (estado.espectadores.remove(id)) {
+            boolean estaba = estado.espectadores.remove(id);
+            estado.espectadoresPorJugador.remove(id);
+            if (estaba) {
                 LoggerUtil.info("espectador eliminado: " + id);
             }
         }

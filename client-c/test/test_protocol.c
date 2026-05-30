@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
 
     /* enviar CONNECT */
     char buf[256];
-    int n = protocolo_construir_connect(buf, sizeof(buf), jugador_id, TIPO_PLAYER);
+    int n = protocolo_construir_connect(buf, sizeof(buf), jugador_id, TIPO_PLAYER, NULL);
     if (n < 0 || !red_enviar(&con, buf, n)) {
         fprintf(stderr, "fallo al enviar CONNECT\n");
         red_cerrar(&con);

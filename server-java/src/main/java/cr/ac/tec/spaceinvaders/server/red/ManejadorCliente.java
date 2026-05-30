@@ -122,7 +122,7 @@ public class ManejadorCliente implements Runnable, GameObserver {
         if ("PLAYER".equalsIgnoreCase(clientTypeStr)) {
             manejarConexionJugador();
         } else if ("SPECTATOR".equalsIgnoreCase(clientTypeStr)) {
-            manejarConexionEspectador();
+            manejarConexionEspectador(mensaje);
         } else {
             enviarError("Tipo de cliente inválido: " + clientTypeStr);
             desconectar();
@@ -148,9 +148,16 @@ public class ManejadorCliente implements Runnable, GameObserver {
     }
 
     /**
-     * Procesa la conexión de un espectador.
+     * Procesa la conexion de un espectador.
+     *
+     * <p>El protocolo exige que el espectador declare en el mismo mensaje
+     * {@code CONNECT} cual jugador piensa observar mediante el campo
+     * {@code target}. Si falta o apunta a un jugador inexistente se rechaza
+     * la conexion con un {@code ERROR} y se cierra el socket.</p>
+     *
+     * @param mensaje mensaje CONNECT recibido del cliente.
      */
-    private void manejarConexionEspectador() {
+    private void manejarConexionEspectador(Mensaje mensaje) {
         // Verificar que haya al menos un jugador activo
         if (!motor.hayJugadorActivo()) {
             enviarError("No hay partidas activas para observar");
@@ -159,16 +166,26 @@ public class ManejadorCliente implements Runnable, GameObserver {
             return;
         }
 
-        // Intentar registrar como espectador
-        boolean registrado = motor.registrarEspectador(jugadorId);
+        // El espectador DEBE indicar a que jugador va a observar.
+        String target = mensaje.getTarget();
+        if (target == null || target.isEmpty()) {
+            enviarError("Espectador requiere campo target (id del jugador a observar)");
+            LoggerUtil.warning("espectador " + jugadorId + " rechazado: falta campo target");
+            desconectar();
+            return;
+        }
+
+        // Intentar registrar como espectador del jugador objetivo.
+        boolean registrado = motor.registrarEspectador(jugadorId, target);
 
         if (registrado) {
             tipoCliente = TipoCliente.SPECTATOR;
-            LoggerUtil.info("espectador " + jugadorId + " conectado exitosamente");
+            LoggerUtil.info("espectador " + jugadorId + " conectado exitosamente observando a " + target);
             enviarEstado();
         } else {
-            enviarError("No se puede conectar como espectador: límite alcanzado");
-            LoggerUtil.warning("conexión de espectador " + jugadorId + " rechazada: límite alcanzado");
+            enviarError("No se puede conectar como espectador: jugador target inexistente o cupo lleno: " + target);
+            LoggerUtil.warning("conexion de espectador " + jugadorId
+                + " rechazada: target invalido o cupo lleno (target=" + target + ")");
             desconectar();
         }
     }

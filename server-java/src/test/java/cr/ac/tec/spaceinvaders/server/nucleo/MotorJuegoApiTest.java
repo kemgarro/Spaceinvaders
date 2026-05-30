@@ -43,8 +43,11 @@ class MotorJuegoApiTest {
             gm.agregarJugador("p" + i, 100.0 + i * 20, Config.CANNON_Y);
         }
         int espectadoresAAgregar = totalMax - Config.MAX_JUGADORES;
+        // Distribuimos los espectadores entre los jugadores existentes (round robin)
+        // para respetar la nueva firma registrarEspectador(idEspectador, idJugadorObservado).
         for (int i = 0; i < espectadoresAAgregar; i++) {
-            assertTrue(gm.registrarEspectador("e" + i));
+            String objetivo = "p" + (i % Config.MAX_JUGADORES);
+            assertTrue(gm.registrarEspectador("e" + i, objetivo));
         }
         assertFalse(gm.tieneEspacio());
     }
