@@ -1,0 +1,133 @@
+/*
+ * main.c
+ * ------
+ * Entry point del cliente C (jugador o espectador).
+ *
+ * Responsabilidades:
+ *  - Parseo simple de argumentos (--host, --port, --id, --spectator).
+ *  - Conexion TCP al servidor via la capa network.
+ *  - Handshake CONNECT.
+ *  - Game loop: drena STATE/EVENT del servidor, lee input local, envia INPUT,
+ *    invoca render. Se mantiene activo hasta que el usuario pide salir o se
+ *    pierde la conexion.
+ *  - Despedida DISCONNECT y cierre limpio de la ventana.
+ */
+
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "constants.h"
+#include "input.h"
+#include "network.h"
+#include "protocol.h"
+#include "render.h"
+
+#define MAIN_ID_DEFAULT     "p1"
+#define MAIN_BUF_MENSAJE    256
+
+/* Imprime ayuda en stderr cuando los argumentos no son validos. */
+static void main_imprimir_uso(const char *prog) {
+    fprintf(stderr,
+            "uso: %s [--host IP] [--port N] [--id ID] [--spectator]\n",
+            prog);
+}
+
+int main(int argc, char *argv[]) {
+    /* --- parseo de argumentos --- */
+    const char *host = SERVIDOR_IP_DEFAULT;
+    int puerto = SERVIDOR_PUERTO;
+    const char *id = MAIN_ID_DEFAULT;
+    bool spectator = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
+            host = argv[++i];
+        } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            puerto = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--id") == 0 && i + 1 < argc) {
+            id = argv[++i];
+        } else if (strcmp(argv[i], "--spectator") == 0) {
+            spectator = true;
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            main_imprimir_uso(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "argumento no reconocido: %s\n", argv[i]);
+            main_imprimir_uso(argv[0]);
+            return 1;
+        }
+    }
+
+    /* --- conexion al servidor --- */
+    Conexion con;
+    red_inicializar(&con);
+    if (!red_conectar(&con, host, puerto)) {
+        fprintf(stderr, "no se pudo conectar a %s:%d\n", host, puerto);
+        return 1;
+    }
+
+    const char *tipo_cliente = spectator ? TIPO_SPECTATOR : TIPO_PLAYER;
+    printf("cliente conectado como %s (%s)\n", id, tipo_cliente);
+
+    char buf[MAIN_BUF_MENSAJE];
+    int n = protocolo_construir_connect(buf, sizeof(buf), id, tipo_cliente);
+    if (n <= 0 || !red_enviar(&con, buf, n)) {
+        fprintf(stderr, "fallo al enviar CONNECT\n");
+        red_cerrar(&con);
+        return 1;
+    }
+
+    /* --- inicializa render y estado --- */
+    render_inicializar();
+    EstadoVista estado;
+    protocolo_estado_inicializar(&estado);
+
+    bool primer_estado = false;
+    char linea[BUFFER_RED];
+
+    /* --- loop principal --- */
+    while (!input_quiere_salir() && con.conectado) {
+        /* drenamos todas las lineas pendientes del servidor */
+        while (red_recibir_linea(&con, linea, sizeof(linea))) {
+            if (protocolo_aplicar_mensaje(&estado, linea)) {
+                primer_estado = true;
+            }
+        }
+
+        /* enviar input solo si soy jugador */
+        if (!spectator) {
+            const char *cmd = input_leer_comando();
+            if (cmd != NULL) {
+                n = protocolo_construir_input(buf, sizeof(buf), id, cmd);
+                if (n > 0) {
+                    /* si falla el envio, marcamos para salir del loop */
+                    if (!red_enviar(&con, buf, n)) {
+                        con.conectado = false;
+                    }
+                }
+            }
+        }
+
+        /* render */
+        if (primer_estado) {
+            render_dibujar(&estado, id);
+        } else {
+            render_dibujar_esperando(host, puerto);
+        }
+    }
+
+    /* --- despedida --- */
+    if (con.conectado) {
+        n = protocolo_construir_disconnect(buf, sizeof(buf), id);
+        if (n > 0) {
+            red_enviar(&con, buf, n);
+        }
+    }
+    red_cerrar(&con);
+    render_cerrar();
+
+    printf("cliente cerrado\n");
+    return 0;
+}
