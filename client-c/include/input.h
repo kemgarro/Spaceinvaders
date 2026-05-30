@@ -4,13 +4,16 @@
 /*
  * input.h
  * -------
- * Lectura de teclado para el cliente jugador. Convierte el estado del teclado
- * (leido via raylib) a una de las acciones reconocidas por el protocolo.
+ * Lectura de teclado (y opcionalmente UART del Pico) para el cliente jugador.
+ * Convierte el estado del teclado leido via raylib, o un evento del Pico, a
+ * una de las acciones reconocidas por el protocolo.
  *
  * El loop principal llama input_leer_comando() una vez por frame y, si retorna
  * non-NULL, envia ese comando como INPUT al servidor. input_quiere_salir()
  * indica si el usuario pidio terminar (Esc o cerrar ventana).
  */
+
+#include "pico.h"   /* para ConexionPico */
 
 /**
  * Devuelve el comando de input segun el estado de teclado actual.
@@ -23,6 +26,14 @@
  *   - sin teclas relevantes: NULL
  */
 const char *input_leer_comando(void);
+
+/**
+ * Variante que consulta primero al Pico por UART.
+ * Si el Pico emitio un byte valido en este frame, retorna esa accion.
+ * Si no, cae al input de teclado normal (input_leer_comando).
+ * Si pico == NULL o no esta activo, equivale a input_leer_comando.
+ */
+const char *input_leer_comando_con_pico(ConexionPico *pico);
 
 /** Retorna true (no cero) si el usuario presiono Esc o cerro la ventana. */
 int input_quiere_salir(void);

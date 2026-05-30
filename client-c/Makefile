@@ -11,7 +11,7 @@ CC      := gcc
 CFLAGS  := -Wall -Wextra -O2 -std=c11 -D_GNU_SOURCE -Iinclude -Ivendor/cjson -I$(HOME)/.local/include
 LDLIBS  := $(HOME)/.local/lib/libraylib.a -L$(HOME)/.local/lib -lGL -lX11 -lm -lpthread -ldl -lrt
 
-SRC_COMUN  := src/network.c src/protocol.c vendor/cjson/cJSON.c
+SRC_COMUN  := src/network.c src/protocol.c src/pico.c vendor/cjson/cJSON.c
 SRC_CLIENT := src/render.c src/input.c src/main.c $(SRC_COMUN)
 SRC_TEST   := test/test_protocol.c $(SRC_COMUN)
 

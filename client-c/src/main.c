@@ -22,6 +22,7 @@
 #include "constants.h"
 #include "input.h"
 #include "network.h"
+#include "pico.h"
 #include "protocol.h"
 #include "render.h"
 
@@ -40,7 +41,7 @@ static void manejador_senales(int sig) {
 /* Imprime ayuda en stderr cuando los argumentos no son validos. */
 static void main_imprimir_uso(const char *prog) {
     fprintf(stderr,
-            "uso: %s [--host IP] [--port N] [--id ID] [--spectator] [--watch ID]\n",
+            "uso: %s [--host IP] [--port N] [--id ID] [--spectator] [--watch ID] [--pico [device]]\n",
             prog);
 }
 
@@ -51,6 +52,8 @@ int main(int argc, char *argv[]) {
     const char *id = MAIN_ID_DEFAULT;
     bool spectator = false;
     const char *target_watch = NULL;
+    /* NULL = sin Pico. No NULL = ruta del dispositivo serie. */
+    const char *pico_device = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
@@ -63,6 +66,14 @@ int main(int argc, char *argv[]) {
             spectator = true;
         } else if (strcmp(argv[i], "--watch") == 0 && i + 1 < argc) {
             target_watch = argv[++i];
+        } else if (strcmp(argv[i], "--pico") == 0) {
+            /* Argumento opcional: si lo que sigue no empieza con '-', se toma
+             * como ruta del dispositivo; si no, se usa el default. */
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                pico_device = argv[++i];
+            } else {
+                pico_device = UART_DISPOSITIVO_DEFAULT;
+            }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             main_imprimir_uso(argv[0]);
             return 0;
@@ -84,6 +95,11 @@ int main(int argc, char *argv[]) {
     if (!spectator && target_watch != NULL) {
         fprintf(stderr, "aviso: --watch se ignora en modo jugador\n");
         target_watch = NULL;
+    }
+    /* En modo espectador --pico no tiene sentido: un espectador no manda input. */
+    if (spectator && pico_device != NULL) {
+        fprintf(stderr, "aviso: --pico se ignora en modo espectador\n");
+        pico_device = NULL;
     }
 
     /* --- instalacion del handler de seniales --- */
@@ -123,6 +139,19 @@ int main(int argc, char *argv[]) {
     EstadoVista estado;
     protocolo_estado_inicializar(&estado);
 
+    /* --- inicializa Pico (opcional, solo si jugador y se paso --pico) --- */
+    ConexionPico pico;
+    pico_inicializar(&pico);
+    if (pico_device != NULL && !spectator) {
+        if (pico_abrir(&pico, pico_device)) {
+            printf("pico: conectado a %s (%d baud)\n",
+                   pico_device, UART_BAUDRATE_DOC);
+        } else {
+            printf("pico: no se pudo abrir %s, sigo solo con teclado\n",
+                   pico_device);
+        }
+    }
+
     bool primer_estado = false;
     char linea[BUFFER_RED];
 
@@ -137,7 +166,7 @@ int main(int argc, char *argv[]) {
 
         /* enviar input solo si soy jugador */
         if (!spectator) {
-            const char *cmd = input_leer_comando();
+            const char *cmd = input_leer_comando_con_pico(&pico);
             if (cmd != NULL) {
                 n = protocolo_construir_input(buf, sizeof(buf), id, cmd);
                 if (n > 0) {
@@ -170,6 +199,7 @@ int main(int argc, char *argv[]) {
         }
     }
     red_cerrar(&con);
+    pico_cerrar(&pico);
     render_cerrar();
 
     printf("cliente cerrado\n");

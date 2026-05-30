@@ -48,4 +48,14 @@
 /* ===== Colores (codigo por tipo) ===== */
 /* Los valores raylib Color los maneja render.h; aqui solo identificadores semanticos. */
 
+/* ===== UART (controlador fisico Pi Pico) ===== */
+#define UART_DISPOSITIVO_DEFAULT  "/dev/ttyACM0"
+#define UART_BAUDRATE_VALOR       B115200   /* macro de termios */
+#define UART_BAUDRATE_DOC         115200    /* solo para logs */
+
+/* Bytes ASCII que envia el Pico (uno por evento). */
+#define PICO_BYTE_IZQUIERDA       'L'
+#define PICO_BYTE_DERECHA         'R'
+#define PICO_BYTE_DISPARO         'F'
+
 #endif /* CONSTANTS_H */

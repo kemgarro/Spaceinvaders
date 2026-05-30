@@ -19,6 +19,7 @@
 
 #include "constants.h"
 #include "input.h"
+#include "pico.h"
 
 /* Cada cuantos frames se reenvia el comando de movimiento si la tecla sigue abajo. */
 #define INPUT_THROTTLE_MOVIMIENTO 3
@@ -50,6 +51,23 @@ const char *input_leer_comando(void) {
     }
 
     return NULL;
+}
+
+const char *input_leer_comando_con_pico(ConexionPico *pico) {
+    /* 1. Consultar al Pico primero: el control fisico tiene prioridad sobre
+     *    el teclado. Asi, si el jugador esta usando el Pico, no le pisamos
+     *    su accion con una tecla suelta. */
+    if (pico != NULL && pico->activo) {
+        char b = pico_leer_byte(pico);
+        if (b != 0) {
+            const char *accion = pico_byte_a_accion(b);
+            if (accion != NULL) {
+                return accion;
+            }
+        }
+    }
+    /* 2. Fallback al teclado. */
+    return input_leer_comando();
 }
 
 int input_quiere_salir(void) {
