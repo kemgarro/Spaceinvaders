@@ -80,6 +80,11 @@ class MotorJuegoTest {
         double yAntes = estado.aliens.obtener(0).getY();
         double velAntes = estado.aliens.obtener(0).getVelocidadX();
 
+        // El motor gatea el movimiento de aliens por intervalo. Para que un
+        // unico tick dispare el rebote, primamos el acumulador con el
+        // intervalo BASE de la oleada (asi el tick avanza el bloque y
+        // aplica manejarBordesAliens).
+        estado.acumuladorAliensMs = estado.intervaloAliensMs;
         motor.tickInterno(noopSink());
 
         Alien primero = estado.aliens.obtener(0);
