@@ -44,13 +44,13 @@ Todos los mensajes comparten la misma estructura raíz, definida en `Mensaje.jav
 
 | Campo        | Tipo               | Uso                                                                                       |
 |--------------|--------------------|-------------------------------------------------------------------------------------------|
-| `type`       | string (enum)      | `INPUT`, `STATE`, `EVENT`, `CONNECT`, `DISCONNECT`, `ERROR`                              |
-| `id`         | string             | Identificador del cliente (jugador o espectador). Obligatorio en `CONNECT` y `INPUT`.    |
+| `type`       | string (enum)      | `INPUT`, `STATE`, `EVENT`, `CONNECT`, `DISCONNECT`, `ERROR`, `ADMIN_CMD`                  |
+| `id`         | string             | Identificador del cliente (jugador, espectador o admin). Obligatorio en `CONNECT`, `INPUT` y `ADMIN_CMD`. |
 | `action`     | string             | Acción enviada por el jugador en mensajes `INPUT`.                                       |
-| `name`       | string             | Nombre del evento en mensajes `EVENT` (corresponde a `TipoEvento`).                      |
-| `clientType` | string             | `PLAYER` o `SPECTATOR`. Solo se usa en `CONNECT`. Si falta, se asume `PLAYER`.           |
+| `name`       | string             | Nombre del evento en mensajes `EVENT` (corresponde a `TipoEvento`) o del comando en `ADMIN_CMD`. |
+| `clientType` | string             | `PLAYER`, `SPECTATOR` o `ADMIN`. Solo se usa en `CONNECT`. Si falta, se asume `PLAYER`.   |
 | `target`     | string             | Id del jugador observado. Obligatorio en `CONNECT` cuando `clientType = "SPECTATOR"`.    |
-| `payload`    | objeto / valor     | Datos específicos del evento o del error.                                                |
+| `payload`    | objeto / valor     | Datos específicos del evento, del error o del comando admin.                              |
 | `data`       | objeto             | Cuerpo del `STATE` (snapshot del juego).                                                 |
 
 Los campos no usados por un tipo de mensaje pueden omitirse o llegar como `null`; el receptor debe tolerar ambos casos.
@@ -67,6 +67,7 @@ Flujo de vida de una conexión:
 4. El servidor valida:
    - Si `clientType == "PLAYER"`: intenta registrar al jugador. Si no cabe, responde `ERROR` y cierra.
    - Si `clientType == "SPECTATOR"`: verifica que haya al menos un jugador activo **y** que el espectador haya enviado el campo `target` con el id de un jugador existente. Si falta `target` o el jugador objetivo no existe, responde `ERROR` y cierra. No se aceptan espectadores "globales" — RF-CE03 del enunciado exige que cada espectador esté asociado a un jugador concreto.
+   - Si `clientType == "ADMIN"`: registra al admin como observador sin consumir slots de jugador ni de espectador. El admin queda habilitado para enviar mensajes `ADMIN_CMD` por el mismo socket (ver sección 5.4).
 5. Si la admisión fue exitosa, el servidor envía un `STATE` inicial al cliente.
 6. A partir de ese momento:
    - El servidor empuja `STATE` (snapshots periódicos) y `EVENT` (cambios puntuales) al cliente.
@@ -155,6 +156,41 @@ Cierre cortés. El servidor libera el slot y deja de notificar al observer.
 ```
 
 Si el socket se cae sin `DISCONNECT`, el servidor lo trata de la misma forma al detectar `IOException` en la lectura.
+
+### 5.4 `ADMIN_CMD`
+
+Lo envía únicamente un cliente que se identificó con `clientType: "ADMIN"` en el `CONNECT`. Si lo envía un jugador o un espectador, el servidor responde `ERROR` y descarta el mensaje. El campo `name` indica el comando del enunciado y `payload` lleva los parámetros.
+
+| `name`           | Payload                                              | Efecto                                                              |
+|------------------|------------------------------------------------------|---------------------------------------------------------------------|
+| `CREATE_ALIEN`   | `{ "x": <num>, "y": <num>, "pts": 10\|20\|40 }`     | Spawnea un alien del tipo indicado (10=Squid, 20=Crab, 40=Octopus). |
+| `SPAWN_OVNI`     | `{ "direccion": "I-D"\|"D-I", "puntosBase": <num> }`| Lanza un OVNI con la dirección y el valor base solicitados.         |
+| `SET_VELOCIDAD`  | `{ "intervaloMs": <num> }`                          | Ajusta el intervalo BASE del bloque de aliens (clamp a `[MIN, MAX]`).|
+| `SET_BUNKERS`    | `{ "pct": 0..100 }`                                 | Fija la salud de los 4 bunkers al porcentaje indicado.              |
+
+Ejemplos:
+
+```json
+{ "type": "ADMIN_CMD", "id": "admin", "name": "CREATE_ALIEN",
+  "payload": { "x": 400, "y": 200, "pts": 40 } }
+```
+
+```json
+{ "type": "ADMIN_CMD", "id": "admin", "name": "SPAWN_OVNI",
+  "payload": { "direccion": "I-D", "puntosBase": 1500 } }
+```
+
+```json
+{ "type": "ADMIN_CMD", "id": "admin", "name": "SET_VELOCIDAD",
+  "payload": { "intervaloMs": 150 } }
+```
+
+```json
+{ "type": "ADMIN_CMD", "id": "admin", "name": "SET_BUNKERS",
+  "payload": { "pct": 70 } }
+```
+
+El servidor loguea cada comando ejecutado y, si el comando es inválido (parámetros faltantes, tipo de alien no soportado, OVNI ya activo, etc.), responde con un `ERROR` describiendo el motivo, sin tumbar el game loop.
 
 ---
 
@@ -360,15 +396,40 @@ El servidor lo envía cuando un mensaje no se puede procesar o cuando rechaza un
 
 ## 7. Comandos del administrador
 
-La consola admin del servidor (stdin del proceso Java) acepta los comandos literales del enunciado. Estos no viajan por TCP — son texto plano leído por el servidor — pero su efecto se refleja en el siguiente `STATE` y, donde aplica, en un `EVENT`.
+El administrador puede inyectar los comandos del enunciado por dos canales equivalentes. Ambos terminan llamando los mismos métodos del motor (`crearAlienAdmin`, `crearOvniAdmin`, `setVelocidadAliens`, `setSaludBunkers`).
 
-| Comando admin            | Sintaxis exacta            | Efecto                                                                 | Mensaje resultante                                |
-|--------------------------|----------------------------|------------------------------------------------------------------------|---------------------------------------------------|
-| Crear OVNI con valor     | `Crear (X, Y, Pts)`        | Coloca un OVNI en `(X, Y)` con `Pts` como valor base (ver multiplicador 0.5–2.0). | Próximo `STATE` con `ovni.activo = true`.          |
-| OVNI izquierda a derecha | `OVNI I-D <pts>`           | Lanza un OVNI moviéndose hacia la derecha con valor base `<pts>`.      | `STATE` con `ovni.direccion = "I-D"`.             |
-| OVNI derecha a izquierda | `OVNI D-I <pts>`           | Lanza un OVNI moviéndose hacia la izquierda.                           | `STATE` con `ovni.direccion = "D-I"`.             |
-| Cambiar velocidad aliens | `Velocidad <ms>`           | Ajusta el intervalo de movimiento de aliens (ver límites en `Config`). | `EVENT SPEED_CHANGED` con `intervaloMs`.          |
-| Reparar bunkers          | `Bunkers <pct>%`           | Fija la salud de los 4 bunkers al porcentaje indicado.                 | Próximo `STATE` con `bunkers[*].salud = pct`.     |
+### 7.1 Admin remoto vía socket (recomendado)
+
+Es la forma alineada con la arquitectura distribuida del proyecto: el admin es un **cliente más**, se conecta al mismo puerto TCP que los jugadores con `clientType: "ADMIN"` y manda sus órdenes como mensajes `ADMIN_CMD` (sección 5.4). El proyecto incluye un cliente Swing en el paquete `cr.ac.tec.spaceinvaders.admin` que provee una GUI con secciones para cada comando.
+
+| Comando enunciado        | `ADMIN_CMD.name` | Payload                                              |
+|--------------------------|------------------|------------------------------------------------------|
+| `Crear (X, Y, Pts)`      | `CREATE_ALIEN`   | `{ "x": X, "y": Y, "pts": Pts }`                     |
+| `OVNI I-D <pts>`         | `SPAWN_OVNI`     | `{ "direccion": "I-D", "puntosBase": pts }`          |
+| `OVNI D-I <pts>`         | `SPAWN_OVNI`     | `{ "direccion": "D-I", "puntosBase": pts }`          |
+| `Velocidad <ms>`         | `SET_VELOCIDAD`  | `{ "intervaloMs": ms }`                              |
+| `Bunkers <pct>%`         | `SET_BUNKERS`    | `{ "pct": pct }`                                     |
+
+Lanzar la GUI:
+
+```bash
+cd server-java
+java -cp build/libs/spaceinvaders-server-1.0.0.jar \
+     cr.ac.tec.spaceinvaders.admin.AdminApp \
+     --host 127.0.0.1 --port 5555 --id admin
+```
+
+### 7.2 Consola CLI local (fallback)
+
+La terminal donde corre el `java -jar` del servidor expone los mismos comandos en su sintaxis literal del enunciado. Esta vía no viaja por TCP — son texto plano leído de stdin — pero su efecto se refleja en el siguiente `STATE` y, donde aplica, en un `EVENT`. Se conserva para uso offline o como respaldo si el cliente Swing no está disponible.
+
+| Comando admin            | Sintaxis exacta            | Efecto                                                                 |
+|--------------------------|----------------------------|------------------------------------------------------------------------|
+| Crear alien              | `Crear (X, Y, Pts)`        | Spawnea un alien del tipo indicado por `Pts` (10/20/40).               |
+| OVNI izquierda a derecha | `OVNI I-D <pts>`           | Lanza un OVNI moviéndose hacia la derecha con valor base `<pts>`.      |
+| OVNI derecha a izquierda | `OVNI D-I <pts>`           | Lanza un OVNI moviéndose hacia la izquierda.                           |
+| Cambiar velocidad aliens | `Velocidad <ms>`           | Ajusta el intervalo BASE del bloque de aliens.                         |
+| Reparar bunkers          | `Bunkers <pct>%`           | Fija la salud de los 4 bunkers al porcentaje indicado.                 |
 
 Los espacios y la capitalización del enunciado se respetan tal cual. El servidor debe loguear cada comando y rechazar (con log + mensaje en consola admin) los mal formados, sin tumbar el juego.
 

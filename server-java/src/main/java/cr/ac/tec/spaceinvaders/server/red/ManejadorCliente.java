@@ -1,5 +1,6 @@
 package cr.ac.tec.spaceinvaders.server.red;
 
+import cr.ac.tec.spaceinvaders.server.entidades.Ovni;
 import cr.ac.tec.spaceinvaders.server.nucleo.MotorJuego;
 import cr.ac.tec.spaceinvaders.server.eventos.EventoJuego;
 import cr.ac.tec.spaceinvaders.server.observador.GameObserver;
@@ -22,6 +23,7 @@ public class ManejadorCliente implements Runnable, GameObserver {
     private enum TipoCliente {
         PLAYER,      // Jugador activo que puede enviar inputs
         SPECTATOR,   // Espectador que solo recibe estado
+        ADMIN,       // Administrador remoto que envia ADMIN_CMD
         UNDEFINED    // No se ha determinado el tipo
     }
 
@@ -86,6 +88,9 @@ public class ManejadorCliente implements Runnable, GameObserver {
                 case INPUT:
                     manejarInput(mensaje);
                     break;
+                case ADMIN_CMD:
+                    manejarAdminCmd(mensaje);
+                    break;
                 case DISCONNECT:
                     desconectar();
                     break;
@@ -123,10 +128,26 @@ public class ManejadorCliente implements Runnable, GameObserver {
             manejarConexionJugador();
         } else if ("SPECTATOR".equalsIgnoreCase(clientTypeStr)) {
             manejarConexionEspectador(mensaje);
+        } else if ("ADMIN".equalsIgnoreCase(clientTypeStr)) {
+            manejarConexionAdmin();
         } else {
             enviarError("Tipo de cliente inválido: " + clientTypeStr);
             desconectar();
         }
+    }
+
+    /**
+     * Procesa la conexion de un administrador remoto.
+     *
+     * <p>El admin no consume un slot de jugador ni de espectador: solo se
+     * registra como observador para recibir {@code STATE}/{@code EVENT} y
+     * poder mandar mensajes {@code ADMIN_CMD} contra el motor. No se crea
+     * ningun canon ni se trackea relacion con jugadores.</p>
+     */
+    private void manejarConexionAdmin() {
+        tipoCliente = TipoCliente.ADMIN;
+        LoggerUtil.info("administrador " + jugadorId + " conectado");
+        enviarEstado();
     }
 
     /**
@@ -212,7 +233,88 @@ public class ManejadorCliente implements Runnable, GameObserver {
             motor.procesarInput(jugadorId, accion);
         }
     }
-    
+
+    /**
+     * Maneja un comando ADMIN_CMD enviado por un administrador remoto.
+     *
+     * <p>El campo {@code name} indica el comando ({@code CREATE_ALIEN},
+     * {@code SPAWN_OVNI}, {@code SET_VELOCIDAD}, {@code SET_BUNKERS}) y el
+     * {@code payload} es un mapa con los parametros propios de cada uno.
+     * Reusa los metodos publicos del motor {@code crearAlienAdmin},
+     * {@code crearOvniAdmin}, {@code setVelocidadAliens} y
+     * {@code setSaludBunkers}.</p>
+     *
+     * <p>Si el cliente no se identifico como ADMIN, el comando se rechaza
+     * con {@code ERROR}.</p>
+     *
+     * @param mensaje mensaje ADMIN_CMD recibido.
+     */
+    private void manejarAdminCmd(Mensaje mensaje) {
+        if (tipoCliente != TipoCliente.ADMIN) {
+            enviarError("Solo el cliente ADMIN puede enviar ADMIN_CMD");
+            LoggerUtil.warning("cliente " + jugadorId
+                + " envio ADMIN_CMD sin ser ADMIN (tipo=" + tipoCliente + ")");
+            return;
+        }
+
+        String comando = mensaje.getName();
+        if (comando == null || comando.isEmpty()) {
+            enviarError("ADMIN_CMD requiere el campo 'name'");
+            return;
+        }
+
+        Object rawPayload = mensaje.getPayload();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (rawPayload instanceof Map)
+            ? (Map<String, Object>) rawPayload
+            : java.util.Collections.emptyMap();
+
+        try {
+            switch (comando.toUpperCase()) {
+                case "CREATE_ALIEN" -> {
+                    double x = leerNumero(payload, "x");
+                    double y = leerNumero(payload, "y");
+                    int pts = (int) leerNumero(payload, "pts");
+                    motor.crearAlienAdmin(x, y, pts);
+                }
+                case "SPAWN_OVNI" -> {
+                    String dirStr = String.valueOf(payload.getOrDefault("direccion", "I-D"));
+                    int puntosBase = (int) leerNumero(payload, "puntosBase");
+                    Ovni.Direccion dir = "I-D".equalsIgnoreCase(dirStr)
+                        ? Ovni.Direccion.IZQUIERDA_A_DERECHA
+                        : Ovni.Direccion.DERECHA_A_IZQUIERDA;
+                    motor.crearOvniAdmin(dir, puntosBase);
+                }
+                case "SET_VELOCIDAD" -> {
+                    long ms = (long) leerNumero(payload, "intervaloMs");
+                    motor.setVelocidadAliens(ms);
+                }
+                case "SET_BUNKERS" -> {
+                    int pct = (int) leerNumero(payload, "pct");
+                    motor.setSaludBunkers(pct);
+                }
+                default -> {
+                    enviarError("Comando ADMIN_CMD desconocido: " + comando);
+                    LoggerUtil.warning("ADMIN_CMD desconocido: " + comando);
+                }
+            }
+        } catch (Exception ex) {
+            enviarError("Error ejecutando " + comando + ": " + ex.getMessage());
+            LoggerUtil.warning("error en ADMIN_CMD " + comando + ": " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Lee un valor numerico del payload con tolerancia: acepta {@link Number}
+     * directo o {@link String} parseable. Devuelve 0 si la clave no existe.
+     */
+    private double leerNumero(Map<String, Object> payload, String clave) {
+        Object v = payload.get(clave);
+        if (v == null) return 0.0;
+        if (v instanceof Number n) return n.doubleValue();
+        return Double.parseDouble(String.valueOf(v));
+    }
+
     /**
      * Envía el estado actual del juego al cliente.
      */
@@ -244,6 +346,8 @@ public class ManejadorCliente implements Runnable, GameObserver {
             } else if (tipoCliente == TipoCliente.SPECTATOR) {
                 motor.eliminarEspectador(jugadorId);
                 LoggerUtil.info("espectador " + jugadorId + " desconectado");
+            } else if (tipoCliente == TipoCliente.ADMIN) {
+                LoggerUtil.info("administrador " + jugadorId + " desconectado");
             }
         }
 
