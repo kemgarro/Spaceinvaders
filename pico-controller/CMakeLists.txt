@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.13)
 
 # Pico SDK setup
+# Hardware objetivo: Raspberry Pi Pico clasico (RP2040 sin CYW43).
+# El LED interno del Pico clasico esta cableado al GP25 y se maneja como GPIO normal.
 set(PICO_BOARD pico CACHE STRING "Pico board")
 include(pico_sdk_import.cmake)
 
@@ -15,6 +17,16 @@ add_executable(controller
     src/button.c
     src/uart_sender.c
 )
+
+# Firmware de diagnostico minimo: solo parpadea el LED, sin USB ni botones.
+# Para activarlo: cmake --build . --target blink_test  y flashear blink_test.uf2
+add_executable(blink_test
+    src/main_blink_test.c
+)
+target_link_libraries(blink_test pico_stdlib hardware_gpio)
+pico_enable_stdio_usb(blink_test 0)
+pico_enable_stdio_uart(blink_test 0)
+pico_add_extra_outputs(blink_test)
 
 target_include_directories(controller PRIVATE include)
 
