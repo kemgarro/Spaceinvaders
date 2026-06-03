@@ -153,11 +153,11 @@ static void render_dibujar_bunker(const EntidadVista *bunker) {
     }
     Color color = GREEN;
     if (bunker->extra >= RENDER_BUNKER_SALUD_ALTA) {
-        color.a = 255;
+        color.a = ALPHA_BUNKER_INTACTO;
     } else if (bunker->extra >= RENDER_BUNKER_SALUD_MEDIA) {
-        color.a = (unsigned char)(255 * 60 / 100);
+        color.a = (unsigned char)ALPHA_BUNKER_DANADO;
     } else {
-        color.a = (unsigned char)(255 * 30 / 100);
+        color.a = (unsigned char)ALPHA_BUNKER_CRITICO;
     }
     DrawRectangle(bunker->x, bunker->y, RENDER_ANCHO_BUNKER, RENDER_ALTO_BUNKER, color);
 }
@@ -179,7 +179,8 @@ static void render_dibujar_gameover(void) {
     int x = (VENTANA_ANCHO - ancho) / 2;
     int y = (VENTANA_ALTO - RENDER_GAMEOVER_FONT_SIZE) / 2;
     /* fondo semitransparente para resaltar el texto */
-    DrawRectangle(0, 0, VENTANA_ANCHO, VENTANA_ALTO, (Color){0, 0, 0, 180});
+    DrawRectangle(0, 0, VENTANA_ANCHO, VENTANA_ALTO,
+                  (Color){0, 0, 0, ALPHA_OVERLAY_GAMEOVER});
     DrawText(texto, x, y, RENDER_GAMEOVER_FONT_SIZE, RED);
 }
 
