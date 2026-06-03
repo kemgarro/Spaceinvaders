@@ -47,6 +47,68 @@
 #define RENDER_SIDEBAR_INTERLINEA  22
 #define RENDER_SIDEBAR_TITULO_Y    80
 
+/* ===== Starfield procedural ===== */
+#define RENDER_NUM_ESTRELLAS             120
+#define RENDER_ESTRELLA_RADIO_MIN        1
+#define RENDER_ESTRELLA_RADIO_MAX        2
+#define RENDER_ESTRELLA_ALPHA_BASE       110
+#define RENDER_ESTRELLA_ALPHA_PULSO      80
+#define RENDER_ESTRELLA_PERIODO_SEG      2.0f
+
+/* ===== Pixel art procedural (sub-bloques de cada entidad) =====
+ * Cada alien y el OVNI se dibujan como composiciones de rectangulos
+ * pequenios (mini-pixeles). Estas constantes definen el tamanio del
+ * mini-pixel y los offsets internos de cada sprite. */
+#define RENDER_PIXEL                     4   /* "pixel grande" del sprite */
+
+/* Squid (10 pts): cuerpo cuadrado + 2 antenas. */
+#define RENDER_SQUID_CUERPO_ANCHO        16
+#define RENDER_SQUID_CUERPO_ALTO         12
+#define RENDER_SQUID_ANTENA_ANCHO        4
+#define RENDER_SQUID_ANTENA_ALTO         6
+
+/* Crab (20 pts): cuerpo ancho + 2 brazos laterales. */
+#define RENDER_CRAB_CUERPO_ANCHO         20
+#define RENDER_CRAB_CUERPO_ALTO          12
+#define RENDER_CRAB_BRAZO_ANCHO          4
+#define RENDER_CRAB_BRAZO_ALTO           6
+
+/* Octopus (40 pts): cuerpo redondeado + 4 tentaculos. */
+#define RENDER_OCTOPUS_CUERPO_ANCHO      22
+#define RENDER_OCTOPUS_CUERPO_ALTO       12
+#define RENDER_OCTOPUS_TENTACULO_ANCHO   3
+#define RENDER_OCTOPUS_TENTACULO_ALTO    6
+
+/* OVNI: cuerpo achatado + cupula + 3 luces inferiores. */
+#define RENDER_OVNI_CUERPO_ALTO          8
+#define RENDER_OVNI_CUPULA_ANCHO         18
+#define RENDER_OVNI_CUPULA_ALTO          8
+#define RENDER_OVNI_LUZ_RADIO            2
+#define RENDER_OVNI_LUZ_SEPARACION       10
+
+/* Canon: base ancha + torre angosta. */
+#define RENDER_CANNON_BASE_ALTO          10
+#define RENDER_CANNON_TORRE_ANCHO        10
+#define RENDER_CANNON_TORRE_ALTO         10
+
+/* Balas: cuerpo + cola de glow detras. */
+#define RENDER_BALA_GLOW_ALTO            6
+#define RENDER_BALA_GLOW_ALPHA           90
+
+/* Bunker: scoop superior (hueco) + huecos progresivos segun dano. */
+#define RENDER_BUNKER_SCOOP_ANCHO        20
+#define RENDER_BUNKER_SCOOP_ALTO         12
+#define RENDER_BUNKER_HUECO_ANCHO        8
+#define RENDER_BUNKER_HUECO_ALTO         8
+
+/* ===== HUD pulido ===== */
+#define RENDER_HUD_PUNTAJE_FONT_SIZE     26
+#define RENDER_HUD_SEPARADOR_ALTO        2
+#define RENDER_HUD_SEPARADOR_Y           38
+
+/* ===== Game Over overlay ===== */
+#define RENDER_GAMEOVER_OUTLINE_OFFSET   3
+
 /** Inicializa la ventana de raylib. Llamar una vez al arranque. */
 void render_inicializar(void);
 

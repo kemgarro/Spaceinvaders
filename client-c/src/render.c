@@ -4,9 +4,20 @@
  * Implementacion del modulo de render con raylib. Se evita exponer Color o
  * cualquier tipo de raylib hacia los headers para no acoplar el resto del
  * cliente a la libreria grafica.
+ *
+ * Pulido visual:
+ *   - Fondo de estrellas procedural con titileo sinusoidal.
+ *   - Aliens dibujados como composiciones de "mini-pixeles" (sprite estilo
+ *     pixel art clasico de Space Invaders), distintos por tipo.
+ *   - Canon con base + torre, OVNI con cupula + luces, balas con cola glow.
+ *   - Bunker con scoop superior y huecos progresivos segun dano.
+ *   - HUD con puntaje destacado y separador.
+ *   - Game over con outline para legibilidad.
  */
 
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "raylib.h"
@@ -17,6 +28,16 @@
 
 /* ===== Etiqueta que el servidor usa para balas disparadas por aliens ===== */
 #define RENDER_ETIQUETA_BALA_ALIEN "ALIEN"
+
+/* ===== Starfield: posiciones y fases generadas una sola vez ===== */
+typedef struct {
+    int x, y;
+    int radio;
+    float fase;   /* offset en radianes para el titileo */
+} Estrella;
+
+static Estrella g_estrellas[RENDER_NUM_ESTRELLAS];
+static int g_starfield_inicializado = 0;
 
 /* ===== Helpers privados al modulo ===== */
 
@@ -44,19 +65,39 @@ static const JugadorVista *render_buscar_jugador(const EstadoVista *estado, cons
     return NULL;
 }
 
-/* Dibuja el HUD superior con puntaje/vidas/oleada del jugador local. */
+/* Dibuja el HUD superior con puntaje/vidas/oleada del jugador local. El
+ * puntaje va destacado en fuente grande; las vidas y la oleada van en
+ * una linea secundaria. Un separador horizontal cierra el bloque. */
 static void render_dibujar_hud(const EstadoVista *estado, const char *id_jugador_local) {
-    char texto[128];
     const JugadorVista *yo = render_buscar_jugador(estado, id_jugador_local);
 
-    if (yo != NULL) {
-        snprintf(texto, sizeof(texto), "Puntaje: %d  Vidas: %d  Oleada: %d",
-                 yo->puntaje, yo->vidas, estado->oleada);
-    } else {
-        snprintf(texto, sizeof(texto), "esperando estado...");
+    if (yo == NULL) {
+        DrawText("esperando estado...",
+                 RENDER_HUD_MARGEN, RENDER_HUD_MARGEN,
+                 RENDER_HUD_FONT_SIZE, RAYWHITE);
+        return;
     }
 
-    DrawText(texto, RENDER_HUD_MARGEN, RENDER_HUD_MARGEN, RENDER_HUD_FONT_SIZE, RAYWHITE);
+    /* Linea 1: PUNTAJE destacado en grande. */
+    char puntaje[64];
+    snprintf(puntaje, sizeof(puntaje), "PUNTAJE  %06d", yo->puntaje);
+    DrawText(puntaje, RENDER_HUD_MARGEN, RENDER_HUD_MARGEN,
+             RENDER_HUD_PUNTAJE_FONT_SIZE, RAYWHITE);
+
+    /* Linea 2: vidas y oleada en fuente normal. */
+    char detalle[64];
+    snprintf(detalle, sizeof(detalle), "VIDAS  %d     OLEADA  %d",
+             yo->vidas, estado->oleada);
+    DrawText(detalle,
+             RENDER_HUD_MARGEN,
+             RENDER_HUD_MARGEN + RENDER_HUD_PUNTAJE_FONT_SIZE - 2,
+             RENDER_HUD_FONT_SIZE, LIGHTGRAY);
+
+    /* Separador horizontal debajo del HUD. */
+    DrawRectangle(RENDER_HUD_MARGEN, RENDER_HUD_SEPARADOR_Y + 12,
+                  VENTANA_ANCHO - 2 * RENDER_HUD_MARGEN - RENDER_SIDEBAR_ANCHO,
+                  RENDER_HUD_SEPARADOR_ALTO,
+                  (Color){ 80, 80, 80, 180 });
 }
 
 /* Dibuja el HUD del espectador (encabezado y stats del jugador observado). */
@@ -128,29 +169,182 @@ static void render_dibujar_ultimo_evento(const EstadoVista *estado) {
     DrawText(texto, x, y, RENDER_EVENTO_FONT_SIZE, LIGHTGRAY);
 }
 
-/* Dibuja un alien (o el OVNI) segun tipo. */
-static void render_dibujar_alien(const EntidadVista *alien) {
-    Color color = render_color_alien(alien->tipo);
-    if (alien->tipo == TIPO_VISTA_OVNI) {
-        DrawRectangle(alien->x, alien->y, RENDER_ANCHO_OVNI, RENDER_ALTO_OVNI, color);
-    } else {
-        DrawRectangle(alien->x, alien->y, RENDER_ANCHO_ALIEN, RENDER_ALTO_ALIEN, color);
+/* Inicializa el starfield con posiciones aleatorias deterministas (srand fijo
+ * para que se vea estable entre frames pero distinto entre arranques). */
+static void render_inicializar_starfield(void) {
+    if (g_starfield_inicializado) {
+        return;
+    }
+    /* Semilla fija para que el patron de estrellas sea reproducible entre
+     * ejecuciones (mejor para defensa: la misma "noche" en cada sesion). */
+    srand(0xC4F3);
+    for (int i = 0; i < RENDER_NUM_ESTRELLAS; i++) {
+        g_estrellas[i].x = rand() % VENTANA_ANCHO;
+        g_estrellas[i].y = rand() % VENTANA_ALTO;
+        int rango = RENDER_ESTRELLA_RADIO_MAX - RENDER_ESTRELLA_RADIO_MIN + 1;
+        g_estrellas[i].radio = RENDER_ESTRELLA_RADIO_MIN + (rand() % rango);
+        g_estrellas[i].fase = (float)(rand() % 628) / 100.0f; /* 0..2*PI */
+    }
+    g_starfield_inicializado = 1;
+}
+
+/* Dibuja las estrellas con titileo sinusoidal usando el tiempo de raylib. */
+static void render_dibujar_starfield(void) {
+    float t = (float)GetTime();
+    float omega = (float)(2.0 * 3.14159265 / RENDER_ESTRELLA_PERIODO_SEG);
+    for (int i = 0; i < RENDER_NUM_ESTRELLAS; i++) {
+        const Estrella *e = &g_estrellas[i];
+        float pulso = sinf(omega * t + e->fase);  /* -1..1 */
+        int alpha = RENDER_ESTRELLA_ALPHA_BASE
+                  + (int)(RENDER_ESTRELLA_ALPHA_PULSO * pulso);
+        if (alpha < 0) alpha = 0;
+        if (alpha > 255) alpha = 255;
+        Color c = (Color){ 255, 255, 255, (unsigned char)alpha };
+        DrawCircle(e->x, e->y, (float)e->radio, c);
     }
 }
 
-/* Dibuja una bala segun el dueno (alien vs canon). */
-static void render_dibujar_bala(const EntidadVista *bala) {
-    Color color = (strncmp(bala->etiqueta, RENDER_ETIQUETA_BALA_ALIEN, ID_MAX) == 0)
-                      ? RED
-                      : YELLOW;
-    DrawRectangle(bala->x, bala->y, RENDER_ANCHO_BALA, RENDER_ALTO_BALA, color);
+/* Dibuja un mini-pixel rectangular del sprite a partir de una grilla virtual.
+ * (ox, oy) es la esquina superior izquierda del sprite; (fx, fy) las
+ * coordenadas en mini-pixeles dentro del sprite. */
+static void render_pixel(int ox, int oy, int fx, int fy, int w, int h, Color color) {
+    DrawRectangle(ox + fx, oy + fy, w, h, color);
 }
 
-/* Dibuja un bunker con alpha segun salud. Si salud == 0 no dibuja nada. */
+/* Squid (10 pts): cuerpo cuadrado pequenio con 2 antenas hacia arriba. */
+static void render_dibujar_squid(int x, int y, Color color) {
+    /* Cuerpo centrado. */
+    int cx = x + (RENDER_ANCHO_ALIEN - RENDER_SQUID_CUERPO_ANCHO) / 2;
+    int cy = y + RENDER_SQUID_ANTENA_ALTO;
+    render_pixel(cx, cy, 0, 0,
+                 RENDER_SQUID_CUERPO_ANCHO, RENDER_SQUID_CUERPO_ALTO, color);
+    /* Dos antenas arriba (izquierda y derecha). */
+    int ax_izq = cx + RENDER_PIXEL;
+    int ax_der = cx + RENDER_SQUID_CUERPO_ANCHO - RENDER_PIXEL - RENDER_SQUID_ANTENA_ANCHO;
+    render_pixel(ax_izq, y, 0, 0,
+                 RENDER_SQUID_ANTENA_ANCHO, RENDER_SQUID_ANTENA_ALTO, color);
+    render_pixel(ax_der, y, 0, 0,
+                 RENDER_SQUID_ANTENA_ANCHO, RENDER_SQUID_ANTENA_ALTO, color);
+    /* "Ojos" como huecos. */
+    int oy_ojos = cy + RENDER_PIXEL;
+    Color hueco = BLACK;
+    render_pixel(cx + RENDER_PIXEL, oy_ojos, 0, 0, RENDER_PIXEL, RENDER_PIXEL, hueco);
+    render_pixel(cx + RENDER_SQUID_CUERPO_ANCHO - 2 * RENDER_PIXEL, oy_ojos, 0, 0,
+                 RENDER_PIXEL, RENDER_PIXEL, hueco);
+}
+
+/* Crab (20 pts): cuerpo ancho con dos brazos a los lados (mas ancho que squid). */
+static void render_dibujar_crab(int x, int y, Color color) {
+    int cy = y + (RENDER_ALTO_ALIEN - RENDER_CRAB_CUERPO_ALTO) / 2;
+    int cx = x + (RENDER_ANCHO_ALIEN - RENDER_CRAB_CUERPO_ANCHO) / 2;
+    render_pixel(cx, cy, 0, 0,
+                 RENDER_CRAB_CUERPO_ANCHO, RENDER_CRAB_CUERPO_ALTO, color);
+    /* Brazos izq/der que sobresalen. */
+    int by = cy + (RENDER_CRAB_CUERPO_ALTO - RENDER_CRAB_BRAZO_ALTO) / 2;
+    render_pixel(cx - RENDER_CRAB_BRAZO_ANCHO, by, 0, 0,
+                 RENDER_CRAB_BRAZO_ANCHO, RENDER_CRAB_BRAZO_ALTO, color);
+    render_pixel(cx + RENDER_CRAB_CUERPO_ANCHO, by, 0, 0,
+                 RENDER_CRAB_BRAZO_ANCHO, RENDER_CRAB_BRAZO_ALTO, color);
+    /* Ojos. */
+    int oy_ojos = cy + RENDER_PIXEL;
+    Color hueco = BLACK;
+    render_pixel(cx + RENDER_PIXEL, oy_ojos, 0, 0, RENDER_PIXEL, RENDER_PIXEL, hueco);
+    render_pixel(cx + RENDER_CRAB_CUERPO_ANCHO - 2 * RENDER_PIXEL, oy_ojos, 0, 0,
+                 RENDER_PIXEL, RENDER_PIXEL, hueco);
+}
+
+/* Octopus (40 pts): cuerpo el mas ancho con 4 tentaculos hacia abajo. */
+static void render_dibujar_octopus(int x, int y, Color color) {
+    int cx = x + (RENDER_ANCHO_ALIEN - RENDER_OCTOPUS_CUERPO_ANCHO) / 2;
+    int cy = y;
+    render_pixel(cx, cy, 0, 0,
+                 RENDER_OCTOPUS_CUERPO_ANCHO, RENDER_OCTOPUS_CUERPO_ALTO, color);
+    /* 4 tentaculos espaciados uniformemente. */
+    int paso = (RENDER_OCTOPUS_CUERPO_ANCHO - RENDER_OCTOPUS_TENTACULO_ANCHO) / 3;
+    int ty = cy + RENDER_OCTOPUS_CUERPO_ALTO;
+    for (int i = 0; i < 4; i++) {
+        int tx = cx + i * paso;
+        render_pixel(tx, ty, 0, 0,
+                     RENDER_OCTOPUS_TENTACULO_ANCHO,
+                     RENDER_OCTOPUS_TENTACULO_ALTO, color);
+    }
+    /* Ojos centrales. */
+    int oy_ojos = cy + RENDER_PIXEL;
+    Color hueco = BLACK;
+    render_pixel(cx + 2 * RENDER_PIXEL, oy_ojos, 0, 0, RENDER_PIXEL, RENDER_PIXEL, hueco);
+    render_pixel(cx + RENDER_OCTOPUS_CUERPO_ANCHO - 3 * RENDER_PIXEL, oy_ojos, 0, 0,
+                 RENDER_PIXEL, RENDER_PIXEL, hueco);
+}
+
+/* OVNI con forma de platillo: cuerpo achatado + cupula encima + 3 luces. */
+static void render_dibujar_ovni(int x, int y, Color color) {
+    /* Cuerpo del platillo (elipse achatada aproximada con rectangulo). */
+    int cuerpo_y = y + RENDER_OVNI_CUPULA_ALTO;
+    DrawRectangle(x, cuerpo_y, RENDER_ANCHO_OVNI, RENDER_OVNI_CUERPO_ALTO, color);
+    /* Cupula centrada arriba (semi-elipse aproximada con rectangulo
+     * + dos bordes en chaflan suave). */
+    int cupula_x = x + (RENDER_ANCHO_OVNI - RENDER_OVNI_CUPULA_ANCHO) / 2;
+    DrawRectangle(cupula_x, y, RENDER_OVNI_CUPULA_ANCHO, RENDER_OVNI_CUPULA_ALTO,
+                  (Color){ color.r, color.g, color.b, 200 });
+    /* 3 luces inferiores amarillas. */
+    int luz_y = cuerpo_y + RENDER_OVNI_CUERPO_ALTO + RENDER_OVNI_LUZ_RADIO;
+    int centro_x = x + RENDER_ANCHO_OVNI / 2;
+    DrawCircle(centro_x - RENDER_OVNI_LUZ_SEPARACION, luz_y, RENDER_OVNI_LUZ_RADIO, YELLOW);
+    DrawCircle(centro_x, luz_y, RENDER_OVNI_LUZ_RADIO, YELLOW);
+    DrawCircle(centro_x + RENDER_OVNI_LUZ_SEPARACION, luz_y, RENDER_OVNI_LUZ_RADIO, YELLOW);
+}
+
+/* Dispatch principal: dibuja un alien (o el OVNI) segun tipo. */
+static void render_dibujar_alien(const EntidadVista *alien) {
+    Color color = render_color_alien(alien->tipo);
+    switch (alien->tipo) {
+        case TIPO_VISTA_SQUID:   render_dibujar_squid(alien->x, alien->y, color); break;
+        case TIPO_VISTA_CRAB:    render_dibujar_crab(alien->x, alien->y, color); break;
+        case TIPO_VISTA_OCTOPUS: render_dibujar_octopus(alien->x, alien->y, color); break;
+        case TIPO_VISTA_OVNI:    render_dibujar_ovni(alien->x, alien->y, color); break;
+        default:
+            /* Fallback a rectangulo plano si llega un tipo desconocido. */
+            DrawRectangle(alien->x, alien->y,
+                          RENDER_ANCHO_ALIEN, RENDER_ALTO_ALIEN, color);
+            break;
+    }
+}
+
+/* Dibuja una bala con cola de glow detras. La direccion del glow depende
+ * del dueno: balas de aliens caen (glow arriba), balas del canon suben
+ * (glow abajo). */
+static void render_dibujar_bala(const EntidadVista *bala) {
+    int es_alien = (strncmp(bala->etiqueta, RENDER_ETIQUETA_BALA_ALIEN, ID_MAX) == 0);
+    Color color = es_alien ? RED : YELLOW;
+    Color glow  = (Color){ color.r, color.g, color.b, RENDER_BALA_GLOW_ALPHA };
+
+    /* Cuerpo principal de la bala. */
+    DrawRectangle(bala->x, bala->y, RENDER_ANCHO_BALA, RENDER_ALTO_BALA, color);
+
+    /* Glow trail: si baja (alien) va sobre la cabeza; si sube (canon) va
+     * debajo. La cola es mas tenue y un poco mas ancha. */
+    int glow_y = es_alien
+                   ? bala->y - RENDER_BALA_GLOW_ALTO
+                   : bala->y + RENDER_ALTO_BALA;
+    DrawRectangle(bala->x - 1, glow_y,
+                  RENDER_ANCHO_BALA + 2, RENDER_BALA_GLOW_ALTO, glow);
+}
+
+/* Dibuja un bunker con la silueta clasica de Space Invaders: bloque
+ * verde con un "scoop" rectangular arriba (la "boquilla" por donde el
+ * canon dispara desde adentro) y huecos progresivos a medida que recibe
+ * dano.
+ *
+ *   - Salud >= 70%: bunker solido (solo el scoop).
+ *   - Salud 40..69%: 2 huecos superiores adicionales.
+ *   - Salud < 40%:   3 huecos repartidos en toda la cara.
+ *   - Salud 0%:      no se dibuja (queda destruido).
+ */
 static void render_dibujar_bunker(const EntidadVista *bunker) {
     if (bunker->extra <= 0) {
         return;
     }
+    /* Color con alpha segun salud (conserva la escala que ya teniamos). */
     Color color = GREEN;
     if (bunker->extra >= RENDER_BUNKER_SALUD_ALTA) {
         color.a = 255;
@@ -159,27 +353,69 @@ static void render_dibujar_bunker(const EntidadVista *bunker) {
     } else {
         color.a = (unsigned char)(255 * 30 / 100);
     }
+
+    /* Cuerpo principal. */
     DrawRectangle(bunker->x, bunker->y, RENDER_ANCHO_BUNKER, RENDER_ALTO_BUNKER, color);
+
+    /* Scoop superior: rectangulo negro centrado que recorta el bunker. */
+    int scoop_x = bunker->x + (RENDER_ANCHO_BUNKER - RENDER_BUNKER_SCOOP_ANCHO) / 2;
+    DrawRectangle(scoop_x, bunker->y,
+                  RENDER_BUNKER_SCOOP_ANCHO, RENDER_BUNKER_SCOOP_ALTO, BLACK);
+
+    /* Huecos de dano. */
+    if (bunker->extra < RENDER_BUNKER_SALUD_ALTA) {
+        DrawRectangle(bunker->x + RENDER_PIXEL,
+                      bunker->y + RENDER_BUNKER_SCOOP_ALTO + RENDER_PIXEL,
+                      RENDER_BUNKER_HUECO_ANCHO, RENDER_BUNKER_HUECO_ALTO, BLACK);
+        DrawRectangle(bunker->x + RENDER_ANCHO_BUNKER - RENDER_PIXEL - RENDER_BUNKER_HUECO_ANCHO,
+                      bunker->y + RENDER_BUNKER_SCOOP_ALTO + RENDER_PIXEL,
+                      RENDER_BUNKER_HUECO_ANCHO, RENDER_BUNKER_HUECO_ALTO, BLACK);
+    }
+    if (bunker->extra < RENDER_BUNKER_SALUD_MEDIA) {
+        DrawRectangle(bunker->x + (RENDER_ANCHO_BUNKER - RENDER_BUNKER_HUECO_ANCHO) / 2,
+                      bunker->y + RENDER_ALTO_BUNKER - RENDER_BUNKER_HUECO_ALTO - RENDER_PIXEL,
+                      RENDER_BUNKER_HUECO_ANCHO, RENDER_BUNKER_HUECO_ALTO, BLACK);
+    }
 }
 
-/* Dibuja un canon. El canon "destacado" (jugador local o target observado) va
- * en verde brillante; el resto en celeste. */
+/* Dibuja un canon con la silueta clasica: una base rectangular ancha
+ * abajo y una torre angosta encima desde donde "sale" la bala. El canon
+ * "destacado" (jugador local o target observado) va en verde brillante;
+ * el resto en celeste. */
 static void render_dibujar_canon(const EntidadVista *canon, const char *id_destacado) {
     /* El servidor guarda el id del jugador dueno del canon en la etiqueta. */
     bool es_destacado = (id_destacado != NULL &&
                          strncmp(canon->etiqueta, id_destacado, ID_MAX) == 0);
     Color color = es_destacado ? LIME : SKYBLUE;
-    DrawRectangle(canon->x, canon->y, RENDER_ANCHO_CANNON, RENDER_ALTO_CANNON, color);
+
+    /* Base ancha en la parte baja. */
+    int base_y = canon->y + RENDER_ALTO_CANNON - RENDER_CANNON_BASE_ALTO;
+    DrawRectangle(canon->x, base_y, RENDER_ANCHO_CANNON, RENDER_CANNON_BASE_ALTO, color);
+
+    /* Torre centrada arriba de la base, mas angosta. */
+    int torre_x = canon->x + (RENDER_ANCHO_CANNON - RENDER_CANNON_TORRE_ANCHO) / 2;
+    DrawRectangle(torre_x, canon->y,
+                  RENDER_CANNON_TORRE_ANCHO, RENDER_CANNON_TORRE_ALTO, color);
 }
 
-/* Overlay de GAME OVER centrado. */
+/* Overlay de GAME OVER centrado con outline negro para legibilidad. */
 static void render_dibujar_gameover(void) {
     const char *texto = "GAME OVER";
     int ancho = MeasureText(texto, RENDER_GAMEOVER_FONT_SIZE);
     int x = (VENTANA_ANCHO - ancho) / 2;
     int y = (VENTANA_ALTO - RENDER_GAMEOVER_FONT_SIZE) / 2;
-    /* fondo semitransparente para resaltar el texto */
+
+    /* Fondo semitransparente para resaltar el texto. */
     DrawRectangle(0, 0, VENTANA_ANCHO, VENTANA_ALTO, (Color){0, 0, 0, 180});
+
+    /* Outline: dibujamos el texto en negro desplazado en 4 diagonales y
+     * luego el rojo encima. Es un efecto barato pero efectivo para que
+     * el "GAME OVER" se lea bien sobre cualquier fondo. */
+    int off = RENDER_GAMEOVER_OUTLINE_OFFSET;
+    DrawText(texto, x - off, y - off, RENDER_GAMEOVER_FONT_SIZE, BLACK);
+    DrawText(texto, x + off, y - off, RENDER_GAMEOVER_FONT_SIZE, BLACK);
+    DrawText(texto, x - off, y + off, RENDER_GAMEOVER_FONT_SIZE, BLACK);
+    DrawText(texto, x + off, y + off, RENDER_GAMEOVER_FONT_SIZE, BLACK);
     DrawText(texto, x, y, RENDER_GAMEOVER_FONT_SIZE, RED);
 }
 
@@ -189,6 +425,7 @@ void render_inicializar(void) {
     SetTraceLogLevel(LOG_WARNING); /* menos ruido en stdout */
     InitWindow(VENTANA_ANCHO, VENTANA_ALTO, VENTANA_TITULO);
     SetTargetFPS(FPS);
+    render_inicializar_starfield();
 }
 
 void render_dibujar(const EstadoVista *estado,
@@ -201,7 +438,10 @@ void render_dibujar(const EstadoVista *estado,
     BeginDrawing();
     ClearBackground(BLACK);
 
-    /* Bunkers de fondo (antes que balas y aliens para que las balas se vean por encima). */
+    /* Fondo estrellado (antes de cualquier entidad). */
+    render_dibujar_starfield();
+
+    /* Bunkers (antes que balas y aliens para que las balas se vean por encima). */
     for (int i = 0; i < estado->n_bunkers; i++) {
         render_dibujar_bunker(&estado->bunkers[i]);
     }
