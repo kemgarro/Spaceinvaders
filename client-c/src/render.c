@@ -60,6 +60,18 @@ static int g_n_aliens_previo = 0;
 static EntidadVista g_ovni_previo;
 static int g_ovni_previo_presente = 0;
 
+/* ===== Animaciones de impacto en el canon =====
+ * Cuando un jugador recibe un disparo, registramos un "hit" asociado a su
+ * id con la marca de tiempo del evento. Mientras dura, el canon se dibuja
+ * con shake horizontal + tinte rojo decayente. */
+typedef struct {
+    char jugador_id[ID_MAX];
+    float tiempo_inicio;
+    int activo;
+} CanonHit;
+
+static CanonHit g_canon_hits[RENDER_MAX_CANON_HITS];
+
 /* ===== Animacion de aliens (frame counter compartido) =====
  * Todos los aliens del bloque alternan su sprite al mismo tiempo, igual
  * que en el Space Invaders original. La fuente del tiempo es GetTime()
@@ -514,23 +526,77 @@ static void render_dibujar_bunker(const EntidadVista *bunker) {
     }
 }
 
-/* Dibuja un canon con la silueta clasica: una base rectangular ancha
- * abajo y una torre angosta encima desde donde "sale" la bala. El canon
- * "destacado" (jugador local o target observado) va en verde brillante;
- * el resto en celeste. */
+/* Busca el slot del hit activo para el id del canon dado. Devuelve un
+ * puntero al CanonHit (con progreso 0..1 en *progreso_out) o NULL si el
+ * canon no tiene impacto activo en este frame. */
+static const CanonHit *render_canon_hit_activo(const char *jugador_id,
+                                                float *progreso_out) {
+    if (jugador_id == NULL || jugador_id[0] == '\0') return NULL;
+    float t = (float)GetTime();
+    for (int i = 0; i < RENDER_MAX_CANON_HITS; i++) {
+        if (!g_canon_hits[i].activo) continue;
+        if (strncmp(g_canon_hits[i].jugador_id, jugador_id, ID_MAX) != 0) continue;
+        float edad = t - g_canon_hits[i].tiempo_inicio;
+        if (edad >= RENDER_CANON_HIT_DURACION_SEG) {
+            g_canon_hits[i].activo = 0;
+            continue;
+        }
+        *progreso_out = edad / RENDER_CANON_HIT_DURACION_SEG;
+        return &g_canon_hits[i];
+    }
+    return NULL;
+}
+
+/* Mezcla dos colores con un factor f (0=a, 1=b). Lineal por canal. */
+static Color render_color_mezclar(Color a, Color b, float f) {
+    if (f < 0.0f) f = 0.0f;
+    if (f > 1.0f) f = 1.0f;
+    return (Color){
+        (unsigned char)(a.r + (b.r - a.r) * f),
+        (unsigned char)(a.g + (b.g - a.g) * f),
+        (unsigned char)(a.b + (b.b - a.b) * f),
+        (unsigned char)(a.a + (b.a - a.a) * f),
+    };
+}
+
+/* Dibuja un canon con la silueta clasica: base rectangular ancha + torre
+ * angosta encima. El canon "destacado" (jugador local o target observado)
+ * va en verde brillante; el resto en celeste.
+ *
+ * Si el canon recibio un impacto recientemente (PLAYER_HIT etc.), se
+ * aplica shake horizontal y tinte rojo decayente para dar feedback
+ * visual al jugador. */
 static void render_dibujar_canon(const EntidadVista *canon, const char *id_destacado) {
     /* El servidor guarda el id del jugador dueno del canon en la etiqueta. */
     bool es_destacado = (id_destacado != NULL &&
                          strncmp(canon->etiqueta, id_destacado, ID_MAX) == 0);
     Color color = es_destacado ? LIME : SKYBLUE;
 
-    /* Base ancha en la parte baja. */
+    /* Aplica shake + tinte si hay impacto activo. */
+    int dx = 0;
+    float progreso = 0.0f;
+    const CanonHit *hit = render_canon_hit_activo(canon->etiqueta, &progreso);
+    if (hit != NULL) {
+        float restante = 1.0f - progreso;
+        /* Shake horizontal: sinusoide de alta frecuencia con amplitud
+         * que decae linealmente. */
+        float omega = RENDER_CANON_HIT_SHAKE_FREQ;
+        float t = (float)GetTime();
+        dx = (int)(RENDER_CANON_HIT_SHAKE_AMPLITUD * restante
+                   * sinf(omega * t));
+        /* Tinte rojo: mezcla el color original con RED, mas intenso al
+         * inicio (restante=1) y desvaneciendose. */
+        color = render_color_mezclar(color, RED, restante);
+    }
+
+    /* Base ancha en la parte baja (con offset de shake). */
     int base_y = canon->y + RENDER_ALTO_CANNON - RENDER_CANNON_BASE_ALTO;
-    DrawRectangle(canon->x, base_y, RENDER_ANCHO_CANNON, RENDER_CANNON_BASE_ALTO, color);
+    DrawRectangle(canon->x + dx, base_y,
+                  RENDER_ANCHO_CANNON, RENDER_CANNON_BASE_ALTO, color);
 
     /* Torre centrada arriba de la base, mas angosta. */
     int torre_x = canon->x + (RENDER_ANCHO_CANNON - RENDER_CANNON_TORRE_ANCHO) / 2;
-    DrawRectangle(torre_x, canon->y,
+    DrawRectangle(torre_x + dx, canon->y,
                   RENDER_CANNON_TORRE_ANCHO, RENDER_CANNON_TORRE_ALTO, color);
 }
 
@@ -623,6 +689,31 @@ void render_dibujar(const EstadoVista *estado,
     }
 
     EndDrawing();
+}
+
+void render_canon_hit(const char *jugador_id) {
+    if (jugador_id == NULL || jugador_id[0] == '\0') return;
+
+    /* Busca un slot existente para este jugador para "reiniciar" la
+     * animacion si recibe varios impactos seguidos; si no, usa el primer
+     * slot libre. */
+    int slot_existente = -1;
+    int slot_libre = -1;
+    for (int i = 0; i < RENDER_MAX_CANON_HITS; i++) {
+        if (g_canon_hits[i].activo &&
+            strncmp(g_canon_hits[i].jugador_id, jugador_id, ID_MAX) == 0) {
+            slot_existente = i;
+            break;
+        }
+        if (slot_libre < 0 && !g_canon_hits[i].activo) {
+            slot_libre = i;
+        }
+    }
+    int slot = (slot_existente >= 0) ? slot_existente
+                                      : (slot_libre >= 0) ? slot_libre : 0;
+    snprintf(g_canon_hits[slot].jugador_id, ID_MAX, "%s", jugador_id);
+    g_canon_hits[slot].tiempo_inicio = (float)GetTime();
+    g_canon_hits[slot].activo = 1;
 }
 
 void render_dibujar_inicio(int soy_espectador, const char *target) {

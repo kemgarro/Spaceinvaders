@@ -125,6 +125,12 @@
 #define RENDER_INICIO_HINT_FONT_SIZE     22
 #define RENDER_INICIO_HINT_PARPADEO_SEG  1.0f
 
+/* ===== Animacion del canon al perder vida ===== */
+#define RENDER_CANON_HIT_DURACION_SEG    0.55f
+#define RENDER_CANON_HIT_SHAKE_AMPLITUD  6     /* pixeles maximo */
+#define RENDER_CANON_HIT_SHAKE_FREQ      30.0f /* rad/s */
+#define RENDER_MAX_CANON_HITS            4     /* uno por jugador maximo */
+
 /** Inicializa la ventana de raylib. Llamar una vez al arranque. */
 void render_inicializar(void);
 
@@ -139,6 +145,18 @@ void render_inicializar(void);
  * @param target id del jugador a observar (solo en modo espectador).
  */
 void render_dibujar_inicio(int soy_espectador, const char *target);
+
+/**
+ * Dispara la animacion de impacto en el canon del jugador indicado.
+ * El render aplica shake + tinte rojo al canon durante
+ * {@code RENDER_CANON_HIT_DURACION_SEG} segundos. Lo llama main.c
+ * cuando el servidor reporta PLAYER_HIT, PLAYER_LIFE_LOST o
+ * PLAYER_ELIMINATED.
+ *
+ * @param jugador_id id del jugador cuyo canon recibio el impacto. Si
+ *                   {@code NULL} o vacio, no hace nada.
+ */
+void render_canon_hit(const char *jugador_id);
 
 /**
  * Dibuja un frame completo a partir del estado actual. Llamar dentro del loop.

@@ -198,6 +198,13 @@ int main(int argc, char *argv[]) {
                        strcmp(estado.ultimo_evento, "PLAYER_LIFE_LOST") == 0 ||
                        strcmp(estado.ultimo_evento, "PLAYER_ELIMINATED") == 0) {
                 audio_vida_perdida();
+                /* ultimo_evento_detalle viene como "id=<jugador>" si el
+                 * payload trae el id; le quito el prefijo y disparo el
+                 * shake + tinte rojo del canon afectado. */
+                const char *detalle = estado.ultimo_evento_detalle;
+                if (strncmp(detalle, "id=", 3) == 0) {
+                    render_canon_hit(detalle + 3);
+                }
             }
             snprintf(ultimo_evento_audio, sizeof(ultimo_evento_audio), "%s",
                      estado.ultimo_evento);
