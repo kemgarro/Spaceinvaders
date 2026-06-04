@@ -109,8 +109,36 @@
 /* ===== Game Over overlay ===== */
 #define RENDER_GAMEOVER_OUTLINE_OFFSET   3
 
+/* ===== Animacion de aliens (frame alternation) ===== */
+#define RENDER_FRAME_PERIODO_SEG         0.5f
+#define RENDER_FRAME_DESPLAZAMIENTO_ALT  2    /* offset en pixels del frame 1 */
+
+/* ===== Explosiones (efecto al morir alien/ovni) ===== */
+#define RENDER_MAX_EXPLOSIONES           64
+#define RENDER_EXPLOSION_DURACION_SEG    0.35f
+#define RENDER_EXPLOSION_RADIO_INICIAL   6
+#define RENDER_EXPLOSION_RADIO_FINAL     22
+#define RENDER_EXPLOSION_GROSOR          3
+
+/* ===== Pantalla de inicio (splash) ===== */
+#define RENDER_INICIO_TITULO_FONT_SIZE   60
+#define RENDER_INICIO_HINT_FONT_SIZE     22
+#define RENDER_INICIO_HINT_PARPADEO_SEG  1.0f
+
 /** Inicializa la ventana de raylib. Llamar una vez al arranque. */
 void render_inicializar(void);
+
+/**
+ * Dibuja la pantalla de inicio (splash). Muestra el titulo del juego y
+ * un hint parpadeante "PRESIONA ESPACIO PARA EMPEZAR". El cliente debe
+ * llamar esta funcion en bucle hasta que el usuario presione espacio o
+ * cierre la ventana.
+ *
+ * @param soy_espectador 0 = modo jugador, 1 = modo espectador (cambia
+ *                       el subtitulo).
+ * @param target id del jugador a observar (solo en modo espectador).
+ */
+void render_dibujar_inicio(int soy_espectador, const char *target);
 
 /**
  * Dibuja un frame completo a partir del estado actual. Llamar dentro del loop.

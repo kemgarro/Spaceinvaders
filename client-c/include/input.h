@@ -38,4 +38,11 @@ const char *input_leer_comando_con_pico(ConexionPico *pico);
 /** Retorna true (no cero) si el usuario presiono Esc o cerro la ventana. */
 int input_quiere_salir(void);
 
+/**
+ * Retorna true (no cero) si el usuario presiono la barra espaciadora
+ * EN ESTE FRAME. Pensado para la pantalla de inicio: el cliente la
+ * llama en bucle y arranca el juego cuando devuelve true.
+ */
+int input_empezar_solicitado(void);
+
 #endif /* INPUT_H */

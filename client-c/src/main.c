@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "audio.h"
 #include "constants.h"
 #include "input.h"
 #include "network.h"
@@ -112,6 +113,27 @@ int main(int argc, char *argv[]) {
     sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 
+    /* --- pantalla de inicio (splash) ---
+     * Antes de abrir el socket mostramos un splash con "PRESIONA ESPACIO".
+     * Asi el server no recibe la conexion hasta que el usuario decide
+     * empezar (mas natural que la ventana del juego apareciendo "viva"
+     * apenas se lanza el binario). */
+    render_inicializar();
+    audio_inicializar();
+    bool empezar = false;
+    while (!input_quiere_salir() && !solicitud_salir && !empezar) {
+        render_dibujar_inicio(spectator ? 1 : 0, target_watch);
+        if (input_empezar_solicitado()) {
+            empezar = true;
+        }
+    }
+    if (!empezar) {
+        /* Usuario cerro la ventana antes de empezar: salida limpia. */
+        audio_cerrar();
+        render_cerrar();
+        return 0;
+    }
+
     /* --- conexion al servidor --- */
     Conexion con;
     red_inicializar(&con);
@@ -134,8 +156,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* --- inicializa render y estado --- */
-    render_inicializar();
+    /* --- inicializa estado (render ya esta inicializado desde el splash) --- */
     EstadoVista estado;
     protocolo_estado_inicializar(&estado);
 
@@ -155,6 +176,10 @@ int main(int argc, char *argv[]) {
     bool primer_estado = false;
     char linea[BUFFER_RED];
 
+    /* Cache para disparar audio cuando cambia el estado del servidor. */
+    char ultimo_evento_audio[EVENTO_MAX] = "";
+    bool ovni_presente_audio = false;
+
     /* --- loop principal --- */
     while (!input_quiere_salir() && con.conectado && !solicitud_salir) {
         /* drenamos todas las lineas pendientes del servidor */
@@ -164,10 +189,33 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        /* triggers de audio + animaciones segun eventos del servidor */
+        if (strncmp(estado.ultimo_evento, ultimo_evento_audio, EVENTO_MAX) != 0) {
+            if (strcmp(estado.ultimo_evento, "ALIEN_DESTROYED") == 0 ||
+                strcmp(estado.ultimo_evento, "UFO_DESTROYED") == 0) {
+                audio_explosion();
+            } else if (strcmp(estado.ultimo_evento, "PLAYER_HIT") == 0 ||
+                       strcmp(estado.ultimo_evento, "PLAYER_LIFE_LOST") == 0 ||
+                       strcmp(estado.ultimo_evento, "PLAYER_ELIMINATED") == 0) {
+                audio_vida_perdida();
+            }
+            snprintf(ultimo_evento_audio, sizeof(ultimo_evento_audio), "%s",
+                     estado.ultimo_evento);
+        }
+        /* OVNI: cuando aparece (transicion ausente -> presente), suena. */
+        if (estado.ovni_presente && !ovni_presente_audio) {
+            audio_ovni();
+        }
+        ovni_presente_audio = estado.ovni_presente;
+
         /* enviar input solo si soy jugador */
         if (!spectator) {
             const char *cmd = input_leer_comando_con_pico(&pico);
             if (cmd != NULL) {
+                /* Sonido de disparo: local al cliente (no espera al server). */
+                if (strcmp(cmd, ACCION_DISPARO) == 0) {
+                    audio_disparo();
+                }
                 n = protocolo_construir_input(buf, sizeof(buf), id, cmd);
                 if (n > 0) {
                     /* si falla el envio, marcamos para salir del loop */
@@ -200,6 +248,7 @@ int main(int argc, char *argv[]) {
     }
     red_cerrar(&con);
     pico_cerrar(&pico);
+    audio_cerrar();
     render_cerrar();
 
     printf("cliente cerrado\n");

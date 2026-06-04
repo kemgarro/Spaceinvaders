@@ -39,6 +39,35 @@ typedef struct {
 static Estrella g_estrellas[RENDER_NUM_ESTRELLAS];
 static int g_starfield_inicializado = 0;
 
+/* ===== Explosiones (efecto al morir alien/ovni) =====
+ * Cada explosion se dibuja como una cruz amarilla cuyo radio crece y
+ * cuyo alpha decae con el tiempo. Las explosiones se disparan SIN
+ * cambios al protocolo: al detectar que un alien presente en el frame
+ * anterior ya no esta en el frame actual, se asume que murio y se
+ * spawnea una explosion en su ultima posicion conocida. */
+typedef struct {
+    int x, y;
+    float tiempo_inicio;
+    int activa;
+} Explosion;
+
+/* Static array: C garantiza que se inicializa en cero (todas inactivas). */
+static Explosion g_explosiones[RENDER_MAX_EXPLOSIONES];
+
+/* Cache del frame anterior para detectar aliens recien muertos. */
+static EntidadVista g_aliens_previo[MAX_ALIENS_VISTA];
+static int g_n_aliens_previo = 0;
+static EntidadVista g_ovni_previo;
+static int g_ovni_previo_presente = 0;
+
+/* ===== Animacion de aliens (frame counter compartido) =====
+ * Todos los aliens del bloque alternan su sprite al mismo tiempo, igual
+ * que en el Space Invaders original. La fuente del tiempo es GetTime()
+ * para que la animacion no dependa del frame rate del cliente. */
+static int render_frame_actual(void) {
+    return ((int)(GetTime() / RENDER_FRAME_PERIODO_SEG)) & 1;
+}
+
 /* ===== Helpers privados al modulo ===== */
 
 /* Devuelve el color base de un alien segun su tipo. OVNI tiene su propio caso. */
@@ -188,6 +217,97 @@ static void render_inicializar_starfield(void) {
     g_starfield_inicializado = 1;
 }
 
+/* Busca el slot libre mas viejo (o reutiliza el slot 0 si todos estan
+ * activos). Devuelve un indice valido en g_explosiones. */
+static int render_explosion_slot_libre(void) {
+    for (int i = 0; i < RENDER_MAX_EXPLOSIONES; i++) {
+        if (!g_explosiones[i].activa) return i;
+    }
+    /* Todos ocupados: pisamos el primero (caso raro). */
+    return 0;
+}
+
+/* Registra una nueva explosion en (x, y). Si no quedan slots libres
+ * reusa el slot 0 (las explosiones duran ~0.35s asi que esto es raro). */
+static void render_spawn_explosion(int x, int y) {
+    int slot = render_explosion_slot_libre();
+    g_explosiones[slot].x = x;
+    g_explosiones[slot].y = y;
+    g_explosiones[slot].tiempo_inicio = (float)GetTime();
+    g_explosiones[slot].activa = 1;
+}
+
+/* Busca un alien del frame actual con el mismo id que el dado.
+ * Devuelve 1 si lo encuentra, 0 si no. */
+static int render_alien_en_frame_actual(const EstadoVista *estado, const char *id) {
+    for (int i = 0; i < estado->n_aliens; i++) {
+        if (strncmp(estado->aliens[i].id, id, ID_MAX) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Compara el frame anterior con el actual. Por cada alien (o el OVNI)
+ * que estaba antes y ya no esta, spawnea una explosion. Despues actualiza
+ * el cache con el estado actual. */
+static void render_detectar_muertes(const EstadoVista *estado) {
+    /* Aliens. */
+    for (int i = 0; i < g_n_aliens_previo; i++) {
+        const EntidadVista *prev = &g_aliens_previo[i];
+        if (!render_alien_en_frame_actual(estado, prev->id)) {
+            /* Centrar la explosion en el centro del sprite. */
+            render_spawn_explosion(prev->x + RENDER_ANCHO_ALIEN / 2,
+                                   prev->y + RENDER_ALTO_ALIEN / 2);
+        }
+    }
+    /* OVNI: si estaba y ya no esta, tambien explota. */
+    if (g_ovni_previo_presente && !estado->ovni_presente) {
+        render_spawn_explosion(g_ovni_previo.x + RENDER_ANCHO_OVNI / 2,
+                               g_ovni_previo.y + RENDER_ALTO_OVNI / 2);
+    }
+
+    /* Actualizar el cache. */
+    g_n_aliens_previo = estado->n_aliens;
+    if (g_n_aliens_previo > MAX_ALIENS_VISTA) {
+        g_n_aliens_previo = MAX_ALIENS_VISTA;
+    }
+    for (int i = 0; i < g_n_aliens_previo; i++) {
+        g_aliens_previo[i] = estado->aliens[i];
+    }
+    g_ovni_previo_presente = estado->ovni_presente;
+    if (estado->ovni_presente) {
+        g_ovni_previo = estado->ovni;
+    }
+}
+
+/* Dibuja cada explosion activa como una cruz amarilla cuyo radio crece y
+ * cuyo alpha decae. Cuando pasa la duracion total se desactiva. */
+static void render_dibujar_explosiones(void) {
+    float t = (float)GetTime();
+    for (int i = 0; i < RENDER_MAX_EXPLOSIONES; i++) {
+        if (!g_explosiones[i].activa) continue;
+        float edad = t - g_explosiones[i].tiempo_inicio;
+        if (edad >= RENDER_EXPLOSION_DURACION_SEG) {
+            g_explosiones[i].activa = 0;
+            continue;
+        }
+        float progreso = edad / RENDER_EXPLOSION_DURACION_SEG; /* 0..1 */
+        int radio = RENDER_EXPLOSION_RADIO_INICIAL
+                  + (int)((RENDER_EXPLOSION_RADIO_FINAL - RENDER_EXPLOSION_RADIO_INICIAL)
+                          * progreso);
+        unsigned char alpha = (unsigned char)(255.0f * (1.0f - progreso));
+        Color color = (Color){ 255, 220, 80, alpha };
+        int cx = g_explosiones[i].x;
+        int cy = g_explosiones[i].y;
+        /* Cruz: barra horizontal y vertical centradas. */
+        DrawRectangle(cx - radio, cy - RENDER_EXPLOSION_GROSOR / 2,
+                      radio * 2, RENDER_EXPLOSION_GROSOR, color);
+        DrawRectangle(cx - RENDER_EXPLOSION_GROSOR / 2, cy - radio,
+                      RENDER_EXPLOSION_GROSOR, radio * 2, color);
+    }
+}
+
 /* Dibuja las estrellas con titileo sinusoidal usando el tiempo de raylib. */
 static void render_dibujar_starfield(void) {
     float t = (float)GetTime();
@@ -211,16 +331,21 @@ static void render_pixel(int ox, int oy, int fx, int fy, int w, int h, Color col
     DrawRectangle(ox + fx, oy + fy, w, h, color);
 }
 
-/* Squid (10 pts): cuerpo cuadrado pequenio con 2 antenas hacia arriba. */
+/* Squid (10 pts): cuerpo cuadrado pequenio con 2 antenas hacia arriba.
+ * Frame 0: antenas pegadas al cuerpo. Frame 1: antenas separadas hacia
+ * los costados, como si las moviera al caminar. */
 static void render_dibujar_squid(int x, int y, Color color) {
+    int frame = render_frame_actual();
+    int desp = (frame == 1) ? RENDER_FRAME_DESPLAZAMIENTO_ALT : 0;
+
     /* Cuerpo centrado. */
     int cx = x + (RENDER_ANCHO_ALIEN - RENDER_SQUID_CUERPO_ANCHO) / 2;
     int cy = y + RENDER_SQUID_ANTENA_ALTO;
     render_pixel(cx, cy, 0, 0,
                  RENDER_SQUID_CUERPO_ANCHO, RENDER_SQUID_CUERPO_ALTO, color);
-    /* Dos antenas arriba (izquierda y derecha). */
-    int ax_izq = cx + RENDER_PIXEL;
-    int ax_der = cx + RENDER_SQUID_CUERPO_ANCHO - RENDER_PIXEL - RENDER_SQUID_ANTENA_ANCHO;
+    /* Antenas separandose / juntandose segun el frame. */
+    int ax_izq = cx + RENDER_PIXEL - desp;
+    int ax_der = cx + RENDER_SQUID_CUERPO_ANCHO - RENDER_PIXEL - RENDER_SQUID_ANTENA_ANCHO + desp;
     render_pixel(ax_izq, y, 0, 0,
                  RENDER_SQUID_ANTENA_ANCHO, RENDER_SQUID_ANTENA_ALTO, color);
     render_pixel(ax_der, y, 0, 0,
@@ -233,14 +358,18 @@ static void render_dibujar_squid(int x, int y, Color color) {
                  RENDER_PIXEL, RENDER_PIXEL, hueco);
 }
 
-/* Crab (20 pts): cuerpo ancho con dos brazos a los lados (mas ancho que squid). */
+/* Crab (20 pts): cuerpo ancho con dos brazos a los lados.
+ * Frame 0: brazos al medio del cuerpo. Frame 1: brazos hacia arriba. */
 static void render_dibujar_crab(int x, int y, Color color) {
+    int frame = render_frame_actual();
+    int desp_y = (frame == 1) ? -RENDER_FRAME_DESPLAZAMIENTO_ALT : 0;
+
     int cy = y + (RENDER_ALTO_ALIEN - RENDER_CRAB_CUERPO_ALTO) / 2;
     int cx = x + (RENDER_ANCHO_ALIEN - RENDER_CRAB_CUERPO_ANCHO) / 2;
     render_pixel(cx, cy, 0, 0,
                  RENDER_CRAB_CUERPO_ANCHO, RENDER_CRAB_CUERPO_ALTO, color);
-    /* Brazos izq/der que sobresalen. */
-    int by = cy + (RENDER_CRAB_CUERPO_ALTO - RENDER_CRAB_BRAZO_ALTO) / 2;
+    /* Brazos izq/der que sobresalen, suben y bajan con el frame. */
+    int by = cy + (RENDER_CRAB_CUERPO_ALTO - RENDER_CRAB_BRAZO_ALTO) / 2 + desp_y;
     render_pixel(cx - RENDER_CRAB_BRAZO_ANCHO, by, 0, 0,
                  RENDER_CRAB_BRAZO_ANCHO, RENDER_CRAB_BRAZO_ALTO, color);
     render_pixel(cx + RENDER_CRAB_CUERPO_ANCHO, by, 0, 0,
@@ -253,20 +382,27 @@ static void render_dibujar_crab(int x, int y, Color color) {
                  RENDER_PIXEL, RENDER_PIXEL, hueco);
 }
 
-/* Octopus (40 pts): cuerpo el mas ancho con 4 tentaculos hacia abajo. */
+/* Octopus (40 pts): cuerpo el mas ancho con 4 tentaculos hacia abajo.
+ * Frame 0: tentaculos pares mas largos (1, 3). Frame 1: tentaculos
+ * impares mas largos (2, 4). Simula que ondea los tentaculos al moverse. */
 static void render_dibujar_octopus(int x, int y, Color color) {
+    int frame = render_frame_actual();
+
     int cx = x + (RENDER_ANCHO_ALIEN - RENDER_OCTOPUS_CUERPO_ANCHO) / 2;
     int cy = y;
     render_pixel(cx, cy, 0, 0,
                  RENDER_OCTOPUS_CUERPO_ANCHO, RENDER_OCTOPUS_CUERPO_ALTO, color);
-    /* 4 tentaculos espaciados uniformemente. */
+    /* 4 tentaculos espaciados, con altura alternada segun el frame. */
     int paso = (RENDER_OCTOPUS_CUERPO_ANCHO - RENDER_OCTOPUS_TENTACULO_ANCHO) / 3;
     int ty = cy + RENDER_OCTOPUS_CUERPO_ALTO;
     for (int i = 0; i < 4; i++) {
         int tx = cx + i * paso;
+        /* La paridad del tentaculo decide si esta "extendido". */
+        int extendido = ((i % 2) == frame);
+        int alto = RENDER_OCTOPUS_TENTACULO_ALTO
+                 + (extendido ? RENDER_FRAME_DESPLAZAMIENTO_ALT : 0);
         render_pixel(tx, ty, 0, 0,
-                     RENDER_OCTOPUS_TENTACULO_ANCHO,
-                     RENDER_OCTOPUS_TENTACULO_ALTO, color);
+                     RENDER_OCTOPUS_TENTACULO_ANCHO, alto, color);
     }
     /* Ojos centrales. */
     int oy_ojos = cy + RENDER_PIXEL;
@@ -435,6 +571,10 @@ void render_dibujar(const EstadoVista *estado,
     /* Id que se "resalta" en el render (canon verde + marcador en sidebar). */
     const char *id_destacado = soy_espectador ? target_observado : id_jugador_local;
 
+    /* Detectar muertes (diff con el cache) ANTES de dibujar para que las
+     * explosiones del frame actual ya esten activas al renderizar. */
+    render_detectar_muertes(estado);
+
     BeginDrawing();
     ClearBackground(BLACK);
 
@@ -466,6 +606,9 @@ void render_dibujar(const EstadoVista *estado,
         render_dibujar_bala(&estado->balas[i]);
     }
 
+    /* Explosiones (sobre todas las entidades, justo abajo del HUD). */
+    render_dibujar_explosiones();
+
     /* HUD encima de todo. */
     if (soy_espectador) {
         render_dibujar_hud_espectador(estado, target_observado);
@@ -477,6 +620,48 @@ void render_dibujar(const EstadoVista *estado,
 
     if (estado->juego_terminado) {
         render_dibujar_gameover();
+    }
+
+    EndDrawing();
+}
+
+void render_dibujar_inicio(int soy_espectador, const char *target) {
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    /* Fondo estrellado tambien en la pantalla de inicio. */
+    render_dibujar_starfield();
+
+    /* Titulo grande centrado. */
+    const char *titulo = "spaCEinvaders";
+    int titulo_ancho = MeasureText(titulo, RENDER_INICIO_TITULO_FONT_SIZE);
+    int titulo_x = (VENTANA_ANCHO - titulo_ancho) / 2;
+    int titulo_y = VENTANA_ALTO / 3;
+    DrawText(titulo, titulo_x, titulo_y, RENDER_INICIO_TITULO_FONT_SIZE, RAYWHITE);
+
+    /* Subtitulo con el modo seleccionado. */
+    char subtitulo[64];
+    if (soy_espectador) {
+        snprintf(subtitulo, sizeof(subtitulo),
+                 "Modo espectador (observa %s)",
+                 (target != NULL && target[0] != '\0') ? target : "?");
+    } else {
+        snprintf(subtitulo, sizeof(subtitulo), "Modo jugador");
+    }
+    int sub_ancho = MeasureText(subtitulo, RENDER_HUD_FONT_SIZE);
+    int sub_x = (VENTANA_ANCHO - sub_ancho) / 2;
+    int sub_y = titulo_y + RENDER_INICIO_TITULO_FONT_SIZE + 12;
+    DrawText(subtitulo, sub_x, sub_y, RENDER_HUD_FONT_SIZE, LIGHTGRAY);
+
+    /* Hint parpadeante "PRESIONA ESPACIO PARA EMPEZAR". El parpadeo es
+     * un on/off cada RENDER_INICIO_HINT_PARPADEO_SEG segundos. */
+    int visible = ((int)(GetTime() / RENDER_INICIO_HINT_PARPADEO_SEG)) & 1;
+    if (visible) {
+        const char *hint = "PRESIONA ESPACIO PARA EMPEZAR";
+        int hint_ancho = MeasureText(hint, RENDER_INICIO_HINT_FONT_SIZE);
+        int hint_x = (VENTANA_ANCHO - hint_ancho) / 2;
+        int hint_y = VENTANA_ALTO * 2 / 3;
+        DrawText(hint, hint_x, hint_y, RENDER_INICIO_HINT_FONT_SIZE, YELLOW);
     }
 
     EndDrawing();

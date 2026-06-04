@@ -73,3 +73,7 @@ const char *input_leer_comando_con_pico(ConexionPico *pico) {
 int input_quiere_salir(void) {
     return (WindowShouldClose() || IsKeyPressed(KEY_ESCAPE)) ? 1 : 0;
 }
+
+int input_empezar_solicitado(void) {
+    return IsKeyPressed(KEY_SPACE) ? 1 : 0;
+}
