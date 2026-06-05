@@ -191,6 +191,34 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "senial recibida, cerrando...\n");
     }
 
+    /* Si salimos porque el servidor cerro la conexion (no por el usuario),
+     * drenamos cualquier mensaje pendiente (ERROR, eventos finales) para
+     * tener el motivo del corte, y mostramos la pantalla de "desconectado"
+     * con el detalle hasta que el usuario cierre la ventana manualmente.
+     * Cubre el caso "espectador conecta antes que el jugador": el servidor
+     * responde con ERROR + cierre y antes la ventana desaparecia sin
+     * explicacion. */
+    if (!con.conectado && !solicitud_salir) {
+        while (red_recibir_linea(&con, linea, sizeof(linea))) {
+            protocolo_aplicar_mensaje(&estado, linea);
+        }
+        char mensaje_corte[NOMBRE_MAX + 32];
+        if (strcmp(estado.ultimo_evento, "ERROR") == 0
+                && estado.ultimo_evento_detalle[0] != '\0') {
+            snprintf(mensaje_corte, sizeof(mensaje_corte),
+                     "ERROR: %s", estado.ultimo_evento_detalle);
+        } else {
+            snprintf(mensaje_corte, sizeof(mensaje_corte),
+                     "Desconectado del servidor");
+        }
+        fprintf(stderr, "%s\n", mensaje_corte);
+        /* do-while para garantizar al menos un frame dibujado. El cierre
+         * se dispara con SIGINT, click en la X, o ESC. */
+        do {
+            render_dibujar_desconectado(mensaje_corte);
+        } while (!input_quiere_salir() && !solicitud_salir);
+    }
+
     /* --- despedida --- */
     if (con.conectado) {
         n = protocolo_construir_disconnect(buf, sizeof(buf), id);
