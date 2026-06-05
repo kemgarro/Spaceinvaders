@@ -21,9 +21,6 @@
 #include "input.h"
 #include "pico.h"
 
-/* Cada cuantos frames se reenvia el comando de movimiento si la tecla sigue abajo. */
-#define INPUT_THROTTLE_MOVIMIENTO 3
-
 const char *input_leer_comando(void) {
     /* FIRE prioritario: solo en el frame de la pulsacion. */
     if (IsKeyPressed(KEY_SPACE)) {

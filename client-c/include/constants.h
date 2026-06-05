@@ -46,6 +46,19 @@
 #define ACCION_QUIETO        "STOP"
 #define ACCION_REINICIAR     "RESTART"
 
+/* ===== Throttling de input =====
+ * Mover el canon en cada frame inunda al servidor; lo enviamos cada N
+ * frames mientras la tecla se mantenga presionada. */
+#define INPUT_THROTTLE_MOVIMIENTO  3
+
+/* ===== Defaults del entry point del cliente ===== */
+#define CLIENTE_ID_DEFAULT         "p1"
+#define CLIENTE_BUFFER_MENSAJE     256
+
+/* ===== Etiquetas del protocolo del servidor ===== */
+/* El servidor marca las balas alien con esta etiqueta en el campo "duenio". */
+#define PROTOCOLO_ETIQUETA_BALA_ALIEN  "ALIEN"
+
 /* ===== Colores (codigo por tipo) ===== */
 /* Los valores raylib Color los maneja render.h; aqui solo identificadores semanticos. */
 

@@ -26,9 +26,6 @@
 #include "protocol.h"
 #include "render.h"
 
-/* ===== Etiqueta que el servidor usa para balas disparadas por aliens ===== */
-#define RENDER_ETIQUETA_BALA_ALIEN "ALIEN"
-
 /* ===== Starfield: posiciones y fases generadas una sola vez ===== */
 typedef struct {
     int x, y;
@@ -462,7 +459,7 @@ static void render_dibujar_alien(const EntidadVista *alien) {
  * del dueno: balas de aliens caen (glow arriba), balas del canon suben
  * (glow abajo). */
 static void render_dibujar_bala(const EntidadVista *bala) {
-    int es_alien = (strncmp(bala->etiqueta, RENDER_ETIQUETA_BALA_ALIEN, ID_MAX) == 0);
+    int es_alien = (strncmp(bala->etiqueta, PROTOCOLO_ETIQUETA_BALA_ALIEN, ID_MAX) == 0);
     Color color = es_alien ? RED : YELLOW;
     Color glow  = (Color){ color.r, color.g, color.b, RENDER_BALA_GLOW_ALPHA };
 

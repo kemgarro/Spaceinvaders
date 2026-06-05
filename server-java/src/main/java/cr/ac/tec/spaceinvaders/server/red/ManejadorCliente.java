@@ -33,7 +33,15 @@ public class ManejadorCliente implements Runnable, GameObserver {
     private PrintWriter salida;
     private final Object salidaLock = new Object();
     private String jugadorId;
-    private boolean conectado;
+    /**
+     * Flag de "conexion viva". Lo lee el callback {@code actualizar()}
+     * del Observer (que corre en el hilo del motor) y lo escribe
+     * {@code desconectar()} (que puede correr en el hilo del cliente o
+     * del motor). Marcarlo {@code volatile} garantiza visibilidad
+     * cross-thread sin necesidad de tomar el lock para una simple
+     * lectura.
+     */
+    private volatile boolean conectado;
     private TipoCliente tipoCliente;
     
     /**

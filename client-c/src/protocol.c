@@ -373,16 +373,15 @@ static void aplicar_event(EstadoVista *estado, cJSON *root) {
     }
 }
 
-/* Aplica un ERROR: marca ultimo_evento = "ERROR" y guarda el texto. */
+/* Aplica un ERROR: marca ultimo_evento = "ERROR" y guarda el texto.
+ * El servidor expone el detalle bajo la clave "error" del payload (ver
+ * JsonUtil.crearMensajeError y docs/protocolo.md seccion 6.3). */
 static void aplicar_error(EstadoVista *estado, cJSON *root) {
     copiar_str_seguro(estado->ultimo_evento, EVENTO_MAX, "ERROR");
     cJSON *payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
     if (cJSON_IsObject(payload)) {
         char texto[NOMBRE_MAX];
         leer_string(payload, "error", texto, NOMBRE_MAX);
-        if (texto[0] == '\0') {
-            leer_string(payload, "message", texto, NOMBRE_MAX);
-        }
         copiar_str_seguro(estado->ultimo_evento_detalle, NOMBRE_MAX, texto);
     } else {
         estado->ultimo_evento_detalle[0] = '\0';

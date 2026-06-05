@@ -27,9 +27,6 @@
 #include "protocol.h"
 #include "render.h"
 
-#define MAIN_ID_DEFAULT     "p1"
-#define MAIN_BUF_MENSAJE    256
-
 /* Bandera global para senializar SIGINT/SIGTERM al loop principal. */
 static volatile sig_atomic_t solicitud_salir = 0;
 
@@ -50,7 +47,7 @@ int main(int argc, char *argv[]) {
     /* --- parseo de argumentos --- */
     const char *host = SERVIDOR_IP_DEFAULT;
     int puerto = SERVIDOR_PUERTO;
-    const char *id = MAIN_ID_DEFAULT;
+    const char *id = CLIENTE_ID_DEFAULT;
     bool spectator = false;
     const char *target_watch = NULL;
     /* NULL = sin Pico. No NULL = ruta del dispositivo serie. */
@@ -148,7 +145,7 @@ int main(int argc, char *argv[]) {
         printf("observando a %s\n", target_watch);
     }
 
-    char buf[MAIN_BUF_MENSAJE];
+    char buf[CLIENTE_BUFFER_MENSAJE];
     int n = protocolo_construir_connect(buf, sizeof(buf), id, tipo_cliente, target_watch);
     if (n <= 0 || !red_enviar(&con, buf, n)) {
         fprintf(stderr, "fallo al enviar CONNECT\n");

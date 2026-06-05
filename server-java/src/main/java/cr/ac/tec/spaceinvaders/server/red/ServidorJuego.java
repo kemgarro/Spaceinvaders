@@ -68,12 +68,17 @@ public class ServidorJuego {
 
     /**
      * Envía un mensaje de rechazo al cliente y cierra la conexión.
+     *
+     * <p>Reutiliza {@link JsonUtil#crearMensajeError(String)} para que el
+     * payload tenga la misma forma (clave {@code "error"}) que cualquier
+     * otro ERROR del servidor; antes este metodo construia JSON a mano
+     * con la clave {@code "message"} y eso obligaba al cliente C a
+     * tolerar ambas formas.</p>
      */
     private void enviarMensajeRechazo(Socket cliente, String mensaje) {
         try {
             PrintWriter salida = new PrintWriter(cliente.getOutputStream(), true);
-            String json = "{\"type\":\"ERROR\",\"message\":\"" + mensaje + "\"}";
-            salida.println(json);
+            salida.println(JsonUtil.crearMensajeError(mensaje));
             salida.flush();
         } catch (IOException e) {
             LoggerUtil.error("error al enviar mensaje de rechazo: " + e.getMessage());
