@@ -140,11 +140,18 @@ public class MotorJuego extends Sujeto {
                 LoggerUtil.warning("agregarJugador rechazado: limite alcanzado (" + id + ")");
                 return false;
             }
+            boolean primerJugador = estado.jugadores.estaVacia();
             Jugador jugador = new Jugador(id, id);
             Canon canon = new Canon(GeneradorIds.siguiente("C"), id, x, y);
             jugador.asignarCanon(canon);
             estado.jugadores.agregar(jugador);
             estado.canones.agregar(canon);
+            /* Si es el primer jugador en entrar, el motor estuvo en pausa
+             * (ver tick). Reprogramamos el proximo OVNI desde "ahora"
+             * para que no spawnee al instante por timer acumulado. */
+            if (primerJugador) {
+                programarSiguienteOvni();
+            }
             LoggerUtil.info("jugador agregado: " + id);
             notificar(estado.aMapa());
             return true;
@@ -451,6 +458,14 @@ public class MotorJuego extends Sujeto {
      */
     private void tick(DetectorColisiones.SinkEventos sink) {
         if (estado.juegoTerminado) return;
+
+        /* Si todavia no hay jugadores conectados, el motor se queda en
+         * pausa: no mueve aliens, no spawnea OVNI, no avanza nada. De lo
+         * contrario los aliens descienden mientras el primer cliente
+         * esta en la pantalla de inicio y, al conectar, ya estarian fuera
+         * del campo visible. Es el "ready state" del juego: el motor
+         * arranca cuando alguien entra a jugar. */
+        if (estado.jugadores.estaVacia()) return;
 
         verificarSpawnOvni(estado);
         moverEntidades();

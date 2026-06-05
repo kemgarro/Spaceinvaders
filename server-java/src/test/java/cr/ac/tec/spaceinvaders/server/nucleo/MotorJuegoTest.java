@@ -65,7 +65,9 @@ class MotorJuegoTest {
 
     @Test
     void aliensEnBordeDerechoInviertenYBajan() {
-        MotorJuego motor = new MotorJuego();
+        /* Requiere al menos un jugador conectado: desde el fix de "motor
+         * en pausa sin jugadores", el tick es no-op si jugadores.estaVacia(). */
+        MotorJuego motor = prepararConJugador();
         EstadoJuego estado = motor.getEstadoInterno();
 
         // Mover manualmente todos los aliens hasta el borde derecho.
@@ -104,7 +106,9 @@ class MotorJuegoTest {
 
     @Test
     void tickEmiteWaveClearedCuandoLosAliensSeAgotan() {
-        MotorJuego motor = new MotorJuego();
+        /* Requiere al menos un jugador conectado: desde el fix de "motor
+         * en pausa sin jugadores", el tick es no-op si jugadores.estaVacia(). */
+        MotorJuego motor = prepararConJugador();
         EstadoJuego estado = motor.getEstadoInterno();
         estado.aliens.vaciar();
 
