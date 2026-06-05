@@ -172,7 +172,7 @@ static void render_dibujar_canon(const EntidadVista *canon, const char *id_desta
     DrawRectangle(canon->x, canon->y, RENDER_ANCHO_CANNON, RENDER_ALTO_CANNON, color);
 }
 
-/* Overlay de GAME OVER centrado. */
+/* Overlay de GAME OVER centrado con hint para reiniciar la partida. */
 static void render_dibujar_gameover(void) {
     const char *texto = "GAME OVER";
     int ancho = MeasureText(texto, RENDER_GAMEOVER_FONT_SIZE);
@@ -181,6 +181,16 @@ static void render_dibujar_gameover(void) {
     /* fondo semitransparente para resaltar el texto */
     DrawRectangle(0, 0, VENTANA_ANCHO, VENTANA_ALTO, (Color){0, 0, 0, 180});
     DrawText(texto, x, y, RENDER_GAMEOVER_FONT_SIZE, RED);
+
+    /* Hint "PRESIONA R PARA REINICIAR" debajo del titulo. El cliente
+     * envia un INPUT con accion RESTART al servidor cuando el jugador
+     * lo presiona; el motor recrea la oleada y reinicia vidas/puntaje. */
+    const char *hint = "PRESIONA R PARA REINICIAR";
+    int hint_font = 22;
+    int hint_ancho = MeasureText(hint, hint_font);
+    int hint_x = (VENTANA_ANCHO - hint_ancho) / 2;
+    int hint_y = y + RENDER_GAMEOVER_FONT_SIZE + 24;
+    DrawText(hint, hint_x, hint_y, hint_font, YELLOW);
 }
 
 /* ===== API publica ===== */

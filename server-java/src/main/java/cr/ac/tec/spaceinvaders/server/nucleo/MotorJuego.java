@@ -405,6 +405,47 @@ public class MotorJuego extends Sujeto {
         }
     }
 
+    /**
+     * Reinicia la partida desde cero tras un {@code GAME_OVER}. Solo tiene
+     * efecto si {@code juegoTerminado} es {@code true}; en cualquier otro
+     * momento es no-op (se loggea como warning).
+     *
+     * <p>Restablece:</p>
+     * <ul>
+     *   <li>Estado de oleada: oleada=1, aliens 5x11, 4 bunkers (delegando
+     *       a {@link GestorOleadas#prepararInicio(EstadoJuego)}).</li>
+     *   <li>Balas y OVNI: ambos vacios.</li>
+     *   <li>Cada jugador: vidas={@link Config#VIDAS_INICIALES}, puntaje=0.</li>
+     *   <li>Bandera {@code juegoTerminado} en {@code false}.</li>
+     *   <li>Timer del OVNI espontaneo.</li>
+     * </ul>
+     *
+     * <p>Los canones de los jugadores quedan en su ultima posicion; el
+     * cliente puede moverlos en el siguiente frame.</p>
+     *
+     * <p>Emite un evento {@link EventoJuego.TipoEvento#GAME_RESTARTED}
+     * seguido de un snapshot {@code STATE}.</p>
+     */
+    public void reiniciarPartida() {
+        synchronized (lock) {
+            if (!estado.juegoTerminado) {
+                LoggerUtil.warning("reiniciarPartida ignorado: juego en curso");
+                return;
+            }
+            estado.balas.vaciar();
+            estado.ovni = null;
+            for (Jugador j : estado.jugadores) {
+                j.reiniciar();
+            }
+            gestorOleadas.prepararInicio(estado);
+            estado.juegoTerminado = false;
+            programarSiguienteOvni();
+            LoggerUtil.info("partida reiniciada por accion RESTART");
+            notificar(new EventoJuego(EventoJuego.TipoEvento.GAME_RESTARTED));
+            notificar(estado.aMapa());
+        }
+    }
+
     /** Cierra el motor (placeholder por simetría con la red). */
     public void shutdown() {
         synchronized (lock) {
@@ -476,6 +517,13 @@ public class MotorJuego extends Sujeto {
      *                  {@code FIRE}, {@code STOP}).
      */
     private void procesarAccion(String jugadorId, String accion) {
+        /* RESTART se procesa ANTES de buscar el canon porque no depende de
+         * uno especifico: cualquier jugador conectado puede pedir reinicio
+         * tras un GAME_OVER. */
+        if ("RESTART".equals(accion)) {
+            reiniciarPartida();
+            return;
+        }
         Canon canon = buscarCanonDe(jugadorId);
         if (canon == null) return;
         switch (accion) {

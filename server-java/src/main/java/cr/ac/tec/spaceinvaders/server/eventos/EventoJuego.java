@@ -21,7 +21,8 @@ public class EventoJuego {
         BUNKER_DAMAGED,     // Bunker recibió daño
         BUNKER_DESTROYED,   // Bunker totalmente destruido
         GAME_OVER,          // Fin del juego
-        SPEED_CHANGED       // Cambio de velocidad de aliens
+        SPEED_CHANGED,      // Cambio de velocidad de aliens
+        GAME_RESTARTED      // Partida reiniciada tras game over (accion RESTART)
     }
 
     private TipoEvento tipo;
