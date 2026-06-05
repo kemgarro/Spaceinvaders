@@ -15,9 +15,6 @@
 #include "protocol.h"
 #include "render.h"
 
-/* ===== Etiqueta que el servidor usa para balas disparadas por aliens ===== */
-#define RENDER_ETIQUETA_BALA_ALIEN "ALIEN"
-
 /* ===== Helpers privados al modulo ===== */
 
 /* Devuelve el color base de un alien segun su tipo. OVNI tiene su propio caso. */
@@ -140,7 +137,7 @@ static void render_dibujar_alien(const EntidadVista *alien) {
 
 /* Dibuja una bala segun el dueno (alien vs canon). */
 static void render_dibujar_bala(const EntidadVista *bala) {
-    Color color = (strncmp(bala->etiqueta, RENDER_ETIQUETA_BALA_ALIEN, ID_MAX) == 0)
+    Color color = (strncmp(bala->etiqueta, PROTOCOLO_ETIQUETA_BALA_ALIEN, ID_MAX) == 0)
                       ? RED
                       : YELLOW;
     DrawRectangle(bala->x, bala->y, RENDER_ANCHO_BALA, RENDER_ALTO_BALA, color);
