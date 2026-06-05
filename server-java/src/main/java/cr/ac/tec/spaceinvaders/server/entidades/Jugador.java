@@ -64,6 +64,17 @@ public class Jugador {
         vidas++;
     }
 
+    /**
+     * Reinicia el jugador a su estado inicial: puntaje en 0 y vidas en
+     * {@link Config#VIDAS_INICIALES}. Se usa cuando el motor recibe la
+     * accion RESTART tras un GAME_OVER. NO toca el canon: el cañón se
+     * mantiene en la posicion que tenia (el motor decide si reposicionarlo).
+     */
+    public void reiniciar() {
+        this.puntaje = 0;
+        this.vidas = Config.VIDAS_INICIALES;
+    }
+
     /** @return true si al jugador le quedan vidas. */
     public boolean estaVivo() {
         return vidas > 0;

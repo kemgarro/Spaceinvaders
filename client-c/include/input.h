@@ -45,4 +45,12 @@ int input_quiere_salir(void);
  */
 int input_empezar_solicitado(void);
 
+/**
+ * Retorna true (no cero) si el usuario presiono la tecla R EN ESTE
+ * FRAME. Se usa tras GAME_OVER: si esta activo, el cliente envia
+ * un INPUT con accion {@code RESTART} para que el servidor reinicie
+ * la partida.
+ */
+int input_reinicio_solicitado(void);
+
 #endif /* INPUT_H */

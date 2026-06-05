@@ -77,3 +77,7 @@ int input_quiere_salir(void) {
 int input_empezar_solicitado(void) {
     return IsKeyPressed(KEY_SPACE) ? 1 : 0;
 }
+
+int input_reinicio_solicitado(void) {
+    return IsKeyPressed(KEY_R) ? 1 : 0;
+}

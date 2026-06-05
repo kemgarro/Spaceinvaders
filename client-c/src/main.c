@@ -217,17 +217,30 @@ int main(int argc, char *argv[]) {
 
         /* enviar input solo si soy jugador */
         if (!spectator) {
-            const char *cmd = input_leer_comando_con_pico(&pico);
-            if (cmd != NULL) {
-                /* Sonido de disparo: local al cliente (no espera al server). */
-                if (strcmp(cmd, ACCION_DISPARO) == 0) {
-                    audio_disparo();
-                }
-                n = protocolo_construir_input(buf, sizeof(buf), id, cmd);
-                if (n > 0) {
-                    /* si falla el envio, marcamos para salir del loop */
-                    if (!red_enviar(&con, buf, n)) {
+            /* En GAME_OVER el unico input util es R (reiniciar partida).
+             * El resto de comandos se filtran para evitar mandar inputs
+             * sin sentido al servidor mientras esperamos el reinicio. */
+            if (estado.juego_terminado) {
+                if (input_reinicio_solicitado()) {
+                    n = protocolo_construir_input(buf, sizeof(buf), id,
+                                                  ACCION_REINICIAR);
+                    if (n > 0 && !red_enviar(&con, buf, n)) {
                         con.conectado = false;
+                    }
+                }
+            } else {
+                const char *cmd = input_leer_comando_con_pico(&pico);
+                if (cmd != NULL) {
+                    /* Sonido de disparo: local al cliente (no espera al server). */
+                    if (strcmp(cmd, ACCION_DISPARO) == 0) {
+                        audio_disparo();
+                    }
+                    n = protocolo_construir_input(buf, sizeof(buf), id, cmd);
+                    if (n > 0) {
+                        /* si falla el envio, marcamos para salir del loop */
+                        if (!red_enviar(&con, buf, n)) {
+                            con.conectado = false;
+                        }
                     }
                 }
             }

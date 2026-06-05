@@ -44,6 +44,7 @@
 #define ACCION_DERECHA       "MOVE_RIGHT"
 #define ACCION_DISPARO       "FIRE"
 #define ACCION_QUIETO        "STOP"
+#define ACCION_REINICIAR     "RESTART"
 
 /* ===== Colores (codigo por tipo) ===== */
 /* Los valores raylib Color los maneja render.h; aqui solo identificadores semanticos. */
