@@ -68,8 +68,30 @@ public class EstadoJuego {
     /** Número de oleada actual (comienza en 1 tras {@link GestorOleadas#prepararInicio}). */
     public int oleada = 0;
 
-    /** Intervalo (ms) entre pasos del bloque de aliens. */
+    /**
+     * Intervalo BASE (ms) entre pasos del bloque de aliens para la oleada
+     * actual. El intervalo efectivo se reduce a medida que mueren aliens
+     * (ver {@code MotorJuego.calcularIntervaloEfectivoAliensMs}), siguiendo
+     * la mecánica clásica de Space Invaders donde los pocos sobrevivientes
+     * se aceleran. Entre oleadas, este valor BASE se reduce un porcentaje
+     * fijo (ver {@link Config#ALIENS_REDUCCION_POR_OLEADA}).
+     */
     public long intervaloAliensMs = Config.ALIENS_INTERVALO_BASE_MS;
+
+    /**
+     * Cantidad de aliens generados al inicio de la oleada actual. Se usa
+     * como denominador para escalar el intervalo de movimiento conforme
+     * la población de aliens disminuye. Lo fija {@link GestorOleadas}.
+     */
+    public int aliensInicialesOleada = 0;
+
+    /**
+     * Acumulador (ms) usado por el motor para decidir cuándo toca mover
+     * el bloque de aliens. Suma el delta de cada tick; cuando supera el
+     * intervalo efectivo, se mueven los aliens y se resta. Resetea entre
+     * oleadas. NO se serializa al cliente (es estado interno del motor).
+     */
+    public long acumuladorAliensMs = 0;
 
     /** Bandera global de fin de juego. */
     public boolean juegoTerminado = false;
@@ -82,14 +104,16 @@ public class EstadoJuego {
      * El orden de las claves está fijo gracias al {@code LinkedHashMap}.</p>
      *
      * @return mapa con las claves {@code oleada}, {@code juegoTerminado},
-     *         {@code intervaloAliensMs}, {@code aliens}, {@code balas},
-     *         {@code bunkers}, {@code canones}, {@code ovni}, {@code jugadores}.
+     *         {@code intervaloAliensMs}, {@code aliensInicialesOleada},
+     *         {@code aliens}, {@code balas}, {@code bunkers}, {@code canones},
+     *         {@code ovni}, {@code jugadores}.
      */
     public Map<String, Object> aMapa() {
         Map<String, Object> mapa = new LinkedHashMap<>();
         mapa.put("oleada", oleada);
         mapa.put("juegoTerminado", juegoTerminado);
         mapa.put("intervaloAliensMs", intervaloAliensMs);
+        mapa.put("aliensInicialesOleada", aliensInicialesOleada);
 
         List<Map<String, Object>> aliensJson = new ArrayList<>();
         for (Alien a : aliens) {

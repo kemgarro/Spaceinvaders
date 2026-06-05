@@ -147,7 +147,7 @@ bool red_enviar(Conexion *con, const char *datos, int largo) {
         }
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
             /* Reintentar despues de pequena espera para no spinear. */
-            usleep(1000);
+            usleep(RETRY_RED_USLEEP);
             continue;
         }
         fprintf(stderr, "red_enviar: send() fallo: %s\n", strerror(errno));

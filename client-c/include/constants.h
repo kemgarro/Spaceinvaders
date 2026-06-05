@@ -58,4 +58,18 @@
 #define PICO_BYTE_DERECHA         'R'
 #define PICO_BYTE_DISPARO         'F'
 
+/* ===== Constantes de presentacion (alpha / transparencia) =====
+ * Valores de canal alpha (0..255) para los distintos estados visuales
+ * de los bunkers y para el overlay de GAME OVER. Centralizados aqui
+ * para evitar numeros magicos en render.c. */
+#define ALPHA_BUNKER_INTACTO      255           /* salud alta: opaco */
+#define ALPHA_BUNKER_DANADO       (255 * 60 / 100)  /* salud media: ~60% */
+#define ALPHA_BUNKER_CRITICO      (255 * 30 / 100)  /* salud baja: ~30% */
+#define ALPHA_OVERLAY_GAMEOVER    180           /* fondo semitransparente del GAME OVER */
+
+/* ===== Constantes de red ===== */
+/* Microsegundos a esperar entre reintentos cuando send() en socket
+ * no bloqueante devuelve EAGAIN/EWOULDBLOCK/EINTR, para no spinear. */
+#define RETRY_RED_USLEEP          1000
+
 #endif /* CONSTANTS_H */

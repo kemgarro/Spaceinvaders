@@ -112,7 +112,12 @@ public class GestorOleadas {
         sink.emitir(new EventoJuego(EventoJuego.TipoEvento.WAVE_STARTED, wavePayload));
     }
 
-    /** Genera la formación 5x11 y la pone en {@code estado.aliens}. */
+    /**
+     * Genera la formación 5x11 y la pone en {@code estado.aliens}.
+     * Reinicia {@code aliensInicialesOleada} con la nueva población y el
+     * {@code acumuladorAliensMs} a cero, para que la aceleración intra-oleada
+     * arranque desde el intervalo base de la oleada.
+     */
     private void generarOleada(EstadoJuego estado) {
         estado.oleada++;
         estado.aliens.vaciar();
@@ -123,6 +128,8 @@ public class GestorOleadas {
                 estado.aliens.agregar(fabrica.crearAlien(fila, x, y));
             }
         }
+        estado.aliensInicialesOleada = estado.aliens.tamano();
+        estado.acumuladorAliensMs = 0;
     }
 
     /** Crea los {@link Config#NUM_BUNKERS} bunkers espaciados uniformemente. */

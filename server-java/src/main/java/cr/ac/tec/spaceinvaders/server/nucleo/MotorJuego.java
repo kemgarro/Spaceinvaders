@@ -453,8 +453,23 @@ public class MotorJuego extends Sujeto {
         if (estado.juegoTerminado) return;
 
         verificarSpawnOvni(estado);
-        moverEntidades();
-        manejarBordesAliens();
+
+        // Aliens: gateados por intervalo efectivo. Mientras menos aliens
+        // queden en la oleada, mas rapido se mueve el bloque (regla clasica
+        // de Space Invaders). El intervalo efectivo se calcula cada tick a
+        // partir del intervalo BASE de la oleada y la poblacion viva actual.
+        long intervaloEfectivoMs = calcularIntervaloEfectivoAliensMs();
+        estado.acumuladorAliensMs += Config.INTERVALO_TICK_MS;
+        if (estado.acumuladorAliensMs >= intervaloEfectivoMs) {
+            estado.acumuladorAliensMs -= intervaloEfectivoMs;
+            moverAliens();
+            manejarBordesAliens();
+        }
+
+        // Balas y OVNI avanzan siempre (su velocidad esta dada por su propia
+        // magnitud por tick, no por el intervalo del bloque de aliens).
+        moverBalasYOvni();
+
         dispararAliensAleatorio();
         balasFueraDePantalla();
         detector.detectar(estado, sink);
@@ -466,6 +481,35 @@ public class MotorJuego extends Sujeto {
             sink.emitir(new EventoJuego(EventoJuego.TipoEvento.WAVE_CLEARED, payload));
             gestorOleadas.siguienteOleada(estado, sink);
         }
+    }
+
+    /**
+     * Calcula el intervalo efectivo (ms) entre pasos del bloque de aliens
+     * para el tick actual.
+     *
+     * <p>Formula: {@code max(MIN, intervaloBase * (alivos / inicialesOleada))}.
+     * Cuando solo queda un alien la escala llega al limite inferior
+     * {@link Config#ALIENS_INTERVALO_MIN_MS}; cuando la oleada esta llena el
+     * intervalo coincide con {@code estado.intervaloAliensMs} (el base de la
+     * oleada). Si {@code aliensInicialesOleada} no esta inicializado todavia,
+     * devuelve el base sin escalar.</p>
+     *
+     * @return intervalo en milisegundos, nunca menor que el minimo.
+     */
+    private long calcularIntervaloEfectivoAliensMs() {
+        if (estado.aliensInicialesOleada <= 0) {
+            return estado.intervaloAliensMs;
+        }
+        int alivos = 0;
+        for (Alien a : estado.aliens) {
+            if (a.estaVivo()) alivos++;
+        }
+        if (alivos <= 0) {
+            return estado.intervaloAliensMs;
+        }
+        double factor = (double) alivos / (double) estado.aliensInicialesOleada;
+        long efectivo = (long) (estado.intervaloAliensMs * factor);
+        return Math.max(Config.ALIENS_INTERVALO_MIN_MS, efectivo);
     }
 
     /**
@@ -487,12 +531,24 @@ public class MotorJuego extends Sujeto {
         }
     }
 
-    /** Mueve aliens, balas y OVNI un tick. */
-    private void moverEntidades() {
+    /**
+     * Mueve el bloque de aliens un paso. Se invoca solo cuando el acumulador
+     * de tiempo supera el intervalo efectivo de la oleada (ver
+     * {@link #calcularIntervaloEfectivoAliensMs()}).
+     */
+    private void moverAliens() {
         reboteAplicadoEsteTick = false;
         for (Alien a : estado.aliens) {
             if (a.estaVivo()) a.mover();
         }
+    }
+
+    /**
+     * Mueve balas y OVNI un tick. Estas entidades avanzan cada tick porque
+     * su velocidad esta dada por su magnitud por tick, no por el intervalo
+     * del bloque de aliens.
+     */
+    private void moverBalasYOvni() {
         for (Bala b : estado.balas) {
             if (b.estaVivo()) b.mover();
         }
