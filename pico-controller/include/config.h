@@ -17,6 +17,7 @@
 #define VENTANA_DOBLE_TOQUE_MS   300   /* 1 vs 2 toques del boton 1 */
 #define DEBOUNCE_MS              20    /* debounce minimo del flanco */
 #define LOOP_DELAY_MS            1     /* pequena pausa entre iteraciones */
+#define LED_PERIODO_MS           1000  /* heartbeat del LED interno (1 Hz) */
 
 /* ===== Bytes que se envian por UART ===== */
 #define BYTE_IZQUIERDA           'L'
