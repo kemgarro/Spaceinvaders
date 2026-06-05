@@ -13,7 +13,8 @@ public class Mensaje {
         EVENT,      // Evento del juego
         CONNECT,    // Conexión de cliente
         DISCONNECT, // Desconexión
-        ERROR       // Mensaje de error
+        ERROR,      // Mensaje de error
+        ADMIN_CMD   // Comando del administrador (solo clientType=ADMIN)
     }
     
     private TipoMensaje type;
